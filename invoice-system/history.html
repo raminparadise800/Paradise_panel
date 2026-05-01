@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>بایگانی فاکتورها | Paradise</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        body { background-color: #2c3e50; font-family: Tahoma, 'Segoe UI', sans-serif; }
+        .history-wrapper { max-width: 1200px; margin: 20px auto; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        .filters-container { display: flex; gap: 15px; margin-bottom: 25px; flex-wrap: wrap; background: #f8f9fa; padding: 15px; border-radius: 6px; }
+        .filters-container input { flex: 2; min-width: 250px; padding: 10px; border: 1px solid #ccc; border-radius: 4px; outline: none; }
+        .history-table { width: 100%; border-collapse: collapse; text-align: right; }
+        .history-table th, .history-table td { padding: 12px; border-bottom: 1px solid #eee; font-size: 14px; }
+        .history-table th { background-color: #2c3e50; color: white; }
+        .status-select { padding: 4px; border-radius: 4px; font-weight: bold; cursor: pointer; border: 1px solid #ccc; }
+        .status-نهایی { background-color: #27ae60; color: white; border: none; }
+    </style>
+</head>
+<body>
+    <div class="actions-bar no-print" style="max-width: 1200px; margin: 0 auto 20px auto; display: flex; justify-content: flex-start;">
+        <a href="retail.html" class="btn btn-blue" style="text-decoration:none; width: auto; padding: 10px 20px;">🔙 صدور فاکتور</a>
+        <a href="customers.html" class="btn btn-gray" style="text-decoration:none; width: auto; padding: 10px 20px; margin-right: 10px;">👤 مشتریان</a>
+    </div>
+
+    <div class="history-wrapper">
+        <h2 style="color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 20px;">🗂️ مدیریت فاکتورها و وضعیت پرداخت</h2>
+        
+        <div class="filters-container">
+            <input type="text" id="search-input" placeholder="🔍 جستجو: شماره فاکتور، نام، شماره موبایل...">
+            <select id="filter-type" style="padding: 10px; border-radius: 4px;">
+                <option value="all">همه فاکتورها</option>
+                <option value="retail">تک‌فروشی</option>
+                <option value="wholesale">عمده‌فروشی</option>
+            </select>
+        </div>
+
+        <div style="overflow-x: auto;">
+            <table class="history-table">
+                <thead>
+                    <tr>
+                        <th>شماره فاکتور</th>
+                        <th>تاریخ</th>
+                        <th>مشتری / تلفن</th>
+                        <th>کشور</th>
+                        <th>فروشنده</th> <th>وزن (g)</th>
+                        <th>وضعیت (لیبل)</th>
+                        <th>مبلغ نهایی</th>
+                        <th style="text-align: center;">عملیات</th>
+                    </tr>
+                </thead>
+                <tbody id="history-body"></tbody>
+            </table>
+        </div>
+    </div>
+    <script type="module" src="history.js"></script>
+</body>
+</html>
