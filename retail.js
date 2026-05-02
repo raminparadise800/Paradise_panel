@@ -4,7 +4,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.11.0/f
 import { collection, addDoc, doc, getDoc, updateDoc, setDoc, serverTimestamp, getDocs } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
 
 // 🔴🔴 ایمیل مدیریت خود را بنویس 🔴🔴
-const ADMIN_EMAIL = "your-email@gmail.com"; 
+const ADMIN_EMAIL = "ramin.paradise800@gmail.com"; 
 
 onAuthStateChanged(auth, (user) => {
     if (user) {
