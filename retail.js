@@ -4,7 +4,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.11.0/f
 import { collection, addDoc, doc, getDoc, updateDoc, setDoc, serverTimestamp, getDocs } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
 
 // 🔴🔴 ایمیل مدیریت خود را بنویس 🔴🔴
-const ADMIN_EMAIL = "ramin.paradise800@gmail.com"; 
+const ADMIN_EMAIL = ramin.paradise800@gmail.com"; 
 
 onAuthStateChanged(auth, (user) => {
     if (user) {
@@ -83,11 +83,13 @@ async function init() {
                     data.items.forEach(item => {
                         const tr = createRow();
                         tr.querySelector('.item-name').value = item.name || '';
-                        tr.querySelector('.item-weight').value = item.weight || 0;
-                        tr.querySelector('.item-ship-discount').value = item.shipDiscount || 0; // مقدار تخفیف
                         tr.querySelector('.item-price').value = item.price || 0;
                         tr.querySelector('.item-qty').value = item.qty || 0;
+                        tr.querySelector('.item-weight').value = item.weight || 0;
+                        tr.querySelector('.item-ship-discount').value = item.shipDiscount || 0;
+                        
                         tr.querySelector('.item-price').dataset.baseValue = item.price || 0;
+                        tr.querySelector('.item-ship-discount').dataset.baseValue = item.shipDiscount || 0;
                     });
                 } else {
                     createRow(); createRow();
@@ -149,7 +151,7 @@ discountInput.addEventListener('input', saveBaseState);
 function calculateTotals() {
     let subTotal = 0; 
     let totalWeight = 0;
-    let totalShipDiscount = 0; // محاسبه مجموع تخفیف‌های ارسال
+    let totalShipDiscount = 0;
 
     document.querySelectorAll('#invoice-body tr').forEach(row => {
         const price = parseFloat(row.querySelector('.item-price').value) || 0;
@@ -162,7 +164,7 @@ function calculateTotals() {
         
         subTotal += rowTotal; 
         totalWeight += (weight * qty);
-        totalShipDiscount += (shipDiscount * qty); // ضرب در تعداد و اضافه به مجموع
+        totalShipDiscount += (shipDiscount * qty);
     });
 
     const shipping = parseFloat(shippingInput.value) || 0;
@@ -180,26 +182,28 @@ discountInput.addEventListener('input', calculateTotals);
 
 function createRow() {
     const tr = document.createElement('tr');
-    // ستون جدید Ship Disc اضافه شد
     tr.innerHTML = `
         <td><input type="text" class="item-name" placeholder="e.g. Shoes"></td>
-        <td class="no-print" style="background: #ecf0f1;"><input type="number" class="item-weight" placeholder="0" style="width:100%;"></td>
-        <td class="no-print" style="background: #e8f8f5;"><input type="number" class="item-ship-discount" placeholder="0" style="width:100%;"></td>
         <td><span class="cur-sym" style="font-size:14px;">${currentCurrency}</span> <input type="number" class="item-price" placeholder="0" style="width:70%;"></td>
         <td><input type="number" class="item-qty" placeholder="0"></td>
         <td style="font-weight:bold;"><span class="cur-sym">${currentCurrency}</span> <span class="row-total">0.00</span></td>
+        <td class="no-print" style="background: #ecf0f1;"><input type="number" class="item-weight" placeholder="0" style="width:100%;"></td>
+        <td class="no-print" style="background: #e8f8f5;"><input type="number" class="item-ship-discount" placeholder="0" style="width:100%;"></td>
         <td class="no-print"><button class="btn-danger remove-row" style="padding:4px 8px; border:none; border-radius:4px; color:white; cursor:pointer;">X</button></td>
     `;
     invoiceBody.appendChild(tr);
 
     const priceInput = tr.querySelector('.item-price');
     const nameInput = tr.querySelector('.item-name');
+    const shipDiscInput = tr.querySelector('.item-ship-discount');
     
     priceInput.dataset.baseValue = 0; priceInput.dataset.baseCurrency = currentCurrency;
+    shipDiscInput.dataset.baseValue = 0; shipDiscInput.dataset.baseCurrency = currentCurrency;
+
     nameInput.addEventListener('input', saveBaseText); 
     priceInput.addEventListener('input', saveBaseState);
+    shipDiscInput.addEventListener('input', saveBaseState);
     
-    // محاسبه اتوماتیک با تایپ در هر فیلد
     tr.querySelectorAll('input').forEach(input => input.addEventListener('input', calculateTotals));
     tr.querySelector('.remove-row').addEventListener('click', () => { tr.remove(); calculateTotals(); });
     return tr;
@@ -265,31 +269,26 @@ document.getElementById('currency-selector').addEventListener('change', async (e
         const rates = data.rates;
         const getRate = (fromCurrSym, toCurrSym) => rates[currencyCodes[toCurrSym]] / rates[currencyCodes[fromCurrSym]];
 
-        const convertInput = (input, isDiscount = false) => {
+        // تابع تبدیل دقیق و رند کردن رو به بالا
+        const convertInput = (input) => {
             let baseVal = parseFloat(input.dataset.baseValue) || 0;
             if (baseVal === 0) return;
             let baseCurr = input.dataset.baseCurrency || currentCurrency;
 
-            if (baseCurr === newCurrency) input.value = baseVal;
-            else {
+            if (baseCurr === newCurrency) {
+                input.value = baseVal;
+            } else {
                 let rate = getRate(baseCurr, newCurrency);
                 let exactValue = baseVal * rate;
-                if (isDiscount) input.value = (Math.floor(exactValue * 2) / 2).toFixed(2);
-                else input.value = (Math.ceil(exactValue * 2) / 2).toFixed(2);
+                // فرمول رند کردن به سمت بالا (نیم اعشار)
+                input.value = (Math.ceil(exactValue * 2) / 2).toFixed(2);
             }
         };
 
-        document.querySelectorAll('.item-price').forEach(input => convertInput(input, false));
-        convertInput(shippingInput, false); convertInput(discountInput, true);
-
-        // مقادیر راهنمای تخفیف شیپینگ هم تبدیل میشوند (چون در دیتاست بیس ذخیره نمیشد نیاز به تبدیل لایو دارد)
-        document.querySelectorAll('.item-ship-discount').forEach(input => {
-            let val = parseFloat(input.value) || 0;
-            if (val > 0) {
-                let rate = getRate(currentCurrency, newCurrency);
-                input.value = (Math.ceil((val * rate) * 2) / 2).toFixed(2);
-            }
-        });
+        document.querySelectorAll('.item-price').forEach(input => convertInput(input));
+        document.querySelectorAll('.item-ship-discount').forEach(input => convertInput(input));
+        convertInput(shippingInput); 
+        convertInput(discountInput);
 
         currentCurrency = newCurrency;
         document.querySelectorAll('.cur-sym').forEach(el => el.textContent = currentCurrency);
@@ -317,7 +316,7 @@ saveExportBtn.addEventListener('click', async () => {
             items.push({
                 name: itemName,
                 weight: parseFloat(row.querySelector('.item-weight').value) || 0,
-                shipDiscount: parseFloat(row.querySelector('.item-ship-discount').value) || 0, // ذخیره مقدار مخفی
+                shipDiscount: parseFloat(row.querySelector('.item-ship-discount').value) || 0,
                 price: parseFloat(row.querySelector('.item-price').value) || 0,
                 qty: parseFloat(row.querySelector('.item-qty').value) || 0,
                 total: parseFloat(row.querySelector('.row-total').textContent)
@@ -338,7 +337,7 @@ saveExportBtn.addEventListener('click', async () => {
         salespersonName: sellerSelect.options[sellerSelect.selectedIndex].text,
         currency: currentCurrency, items: items, 
         totalWeight: totalWeight, 
-        totalShipDiscountGuide: totalShipDiscount, // ذخیره این عدد برای آینده
+        totalShipDiscountGuide: totalShipDiscount,
         shippingCost: parseFloat(shippingInput.value) || 0, discount: parseFloat(discountInput.value) || 0, 
         grandTotal: parseFloat(document.getElementById('grand-total').textContent)
     };
@@ -357,6 +356,7 @@ saveExportBtn.addEventListener('click', async () => {
         
         await setDoc(doc(db, "Customers", phone), { name: name, phone: phone, country: country, lastUpdate: serverTimestamp() }, { merge: true });
         
+        // --- عملیات عکس گرفتن نهایی و تمیز ---
         const invoiceElement = document.getElementById('invoice-capture');
         const printLabel = document.getElementById('print-shipping-label');
         printLabel.textContent = document.getElementById('shipping-type').options[document.getElementById('shipping-type').selectedIndex].text;
@@ -376,6 +376,7 @@ saveExportBtn.addEventListener('click', async () => {
             }
         });
 
+        // اضافه کردن کلاس طلایی برای عکس‌برداری
         invoiceElement.classList.add('print-mode');
 
         html2canvas(invoiceElement, { scale: 2, useCORS: true, backgroundColor: "#ffffff" }).then(canvas => {
@@ -386,6 +387,7 @@ saveExportBtn.addEventListener('click', async () => {
                 const link = document.createElement('a');
                 link.download = fileName; link.href = URL.createObjectURL(blob); link.click();
                 
+                // برگرداندن به حالت عادی بعد از عکس
                 invoiceElement.classList.remove('print-mode');
                 printLabel.style.display = 'none';
                 spans.forEach(item => { item.span.remove(); item.input.style.display = ''; });
