@@ -4,7 +4,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.11.0/f
 import { collection, addDoc, doc, getDoc, updateDoc, setDoc, serverTimestamp, getDocs } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
 
 // 🔴🔴 ایمیل مدیریت خود را بنویس 🔴🔴
-const ADMIN_EMAIL = "ramin.paradise800.com"; 
+const ADMIN_EMAIL = "your-email@gmail.com"; 
 
 onAuthStateChanged(auth, (user) => {
     if (user) {
@@ -269,7 +269,6 @@ document.getElementById('currency-selector').addEventListener('change', async (e
         const rates = data.rates;
         const getRate = (fromCurrSym, toCurrSym) => rates[currencyCodes[toCurrSym]] / rates[currencyCodes[fromCurrSym]];
 
-        // تابع تبدیل دقیق و رند کردن رو به بالا
         const convertInput = (input) => {
             let baseVal = parseFloat(input.dataset.baseValue) || 0;
             if (baseVal === 0) return;
@@ -280,7 +279,6 @@ document.getElementById('currency-selector').addEventListener('change', async (e
             } else {
                 let rate = getRate(baseCurr, newCurrency);
                 let exactValue = baseVal * rate;
-                // فرمول رند کردن به سمت بالا (نیم اعشار)
                 input.value = (Math.ceil(exactValue * 2) / 2).toFixed(2);
             }
         };
@@ -376,7 +374,14 @@ saveExportBtn.addEventListener('click', async () => {
 
         invoiceElement.classList.add('print-mode');
 
-        html2canvas(invoiceElement, { scale: 2, useCORS: true, backgroundColor: "#ffffff" }).then(canvas => {
+        // 🔥 مجبور کردن دوربین برای در نظر گرفتن عرض کامپیوتر 🔥
+        html2canvas(invoiceElement, { 
+            scale: 2, 
+            useCORS: true, 
+            backgroundColor: "#ffffff",
+            windowWidth: 850, 
+            width: 850
+        }).then(canvas => {
             canvas.toBlob(async (blob) => {
                 const fileName = `${generatedInvoiceNumber}-${name}.png`;
                 const file = new File([blob], fileName, { type: 'image/png' });
