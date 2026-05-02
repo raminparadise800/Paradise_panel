@@ -4,7 +4,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.11.0/f
 import { collection, addDoc, doc, getDoc, updateDoc, setDoc, serverTimestamp, getDocs } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
 
 // 🔴🔴 ایمیل مدیریت خود را بنویس 🔴🔴
-const ADMIN_EMAIL = ramin.paradise800@gmail.com"; 
+const ADMIN_EMAIL = "ramin.paradise800.com"; 
 
 onAuthStateChanged(auth, (user) => {
     if (user) {
@@ -346,7 +346,6 @@ saveExportBtn.addEventListener('click', async () => {
         if (isEditMode) {
             invoicePayload.lastEdited = serverTimestamp();
             await updateDoc(doc(db, editCol, editId), invoicePayload);
-            alert("فاکتور با موفقیت بروزرسانی شد!");
         } else {
             invoicePayload.invoiceNumber = generatedInvoiceNumber;
             invoicePayload.status = "ثبت اولیه";
@@ -356,7 +355,6 @@ saveExportBtn.addEventListener('click', async () => {
         
         await setDoc(doc(db, "Customers", phone), { name: name, phone: phone, country: country, lastUpdate: serverTimestamp() }, { merge: true });
         
-        // --- عملیات عکس گرفتن نهایی و تمیز ---
         const invoiceElement = document.getElementById('invoice-capture');
         const printLabel = document.getElementById('print-shipping-label');
         printLabel.textContent = document.getElementById('shipping-type').options[document.getElementById('shipping-type').selectedIndex].text;
@@ -376,7 +374,6 @@ saveExportBtn.addEventListener('click', async () => {
             }
         });
 
-        // اضافه کردن کلاس طلایی برای عکس‌برداری
         invoiceElement.classList.add('print-mode');
 
         html2canvas(invoiceElement, { scale: 2, useCORS: true, backgroundColor: "#ffffff" }).then(canvas => {
@@ -387,7 +384,6 @@ saveExportBtn.addEventListener('click', async () => {
                 const link = document.createElement('a');
                 link.download = fileName; link.href = URL.createObjectURL(blob); link.click();
                 
-                // برگرداندن به حالت عادی بعد از عکس
                 invoiceElement.classList.remove('print-mode');
                 printLabel.style.display = 'none';
                 spans.forEach(item => { item.span.remove(); item.input.style.display = ''; });
