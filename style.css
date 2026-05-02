@@ -89,7 +89,7 @@ input, select, button {
     padding: 0 5px; /* Side padding to avoid edge touch */
 }
 
-/* --- Invoice Wrapper Layout (Image 6 Fix) --- */
+/* --- Invoice Wrapper Layout --- */
 .invoice-capture {
     padding: 20px;
 }
@@ -125,7 +125,7 @@ input, select, button {
     font-weight: bold;
 }
 
-/* Meta Section (Image 6 cramped fields) */
+/* Meta Section */
 .meta-section {
     display: flex;
     justify-content: space-between;
@@ -158,7 +158,7 @@ input, select, button {
     border-radius: 3px;
 }
 
-/* --- Tables & Horizontal Scrolling (Crucial for Mobile) --- */
+/* --- Tables & Horizontal Scrolling --- */
 .table-container {
     overflow-x: auto; /* Standard horizontal scroll container */
     border-radius: 4px;
@@ -182,13 +182,13 @@ table th, table td {
 table th { background-color: #f8f9fa; color: #555; }
 table td input { width: 100%; padding: 4px; }
 
-/* Styles specific to invoice table (English headers) */
+/* Styles specific to invoice table */
 #invoice-table th { text-align: center;}
 #invoice-table td { text-align: center;}
 #invoice-table input[type="text"] { text-align: left; }
 #invoice-table input[type="number"] { text-align: center; }
 
-/* Totals Section (Image 6 bottom) */
+/* Totals Section */
 .totals-section {
     display: flex;
     justify-content: flex-end; /* Align box to the right */
@@ -226,7 +226,7 @@ table td input { width: 100%; padding: 4px; }
     color: var(--accent-color);
 }
 
-/* Print/No-Print Controls */
+/* Print/No-Print Controls (For actual paper printing) */
 @media print {
     .no-print { display: none !important; }
     body { background: white; padding: 0; margin: 0; box-shadow: none;}
@@ -234,7 +234,7 @@ table td input { width: 100%; padding: 4px; }
     table th, table td { font-size: 10px; }
 }
 
-/* --- Profit Dashboard Fixes (Image 8 & 9) --- */
+/* --- Profit Dashboard Fixes --- */
 .tab-controls {
     display: flex;
     flex-wrap: wrap; /* Ensures buttons wrap on mobile, fixing overlapping */
@@ -265,7 +265,7 @@ table td input { width: 100%; padding: 4px; }
 .tab-btn.active { color: #fff; border: none;}
 .tab-btn .tab-icon { font-size: 20px; margin-bottom: 5px; }
 
-/* Dashboard Cards (Profit Summary) */
+/* Dashboard Cards */
 .dashboard-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); /* responsive grid */
@@ -293,7 +293,7 @@ table td input { width: 100%; padding: 4px; }
 .inv-header { padding: 15px; border-bottom: 1px solid #ddd;}
 .inv-body { padding: 10px;}
 
-/* --- History/Customers (Table & Filter Layouts) --- */
+/* --- History/Customers --- */
 .wrapper, .history-wrapper, .admin-wrapper { padding: 15px; }
 
 .filters-container, .search-box, .admin-input-group {
@@ -312,7 +312,6 @@ table td input { width: 100%; padding: 4px; }
     padding: 10px;
 }
 
-/* Admin Sellers Layout (Image 9 align fix) */
 #sellers-list tr td {
     vertical-align: middle;
 }
@@ -334,7 +333,7 @@ table td input { width: 100%; padding: 4px; }
         font-size: 14px;
     }
 
-    /* Controls Panel (Retail/Wholesale Selector) stacking */
+    /* Controls Panel stacking */
     .no-print > div[style*="max-width: 850px"] {
         flex-direction: column;
         gap: 10px;
@@ -394,4 +393,43 @@ table td input { width: 100%; padding: 4px; }
         flex-direction: column !important;
         align-items: flex-start !important;
     }
+}
+
+/* ========================================= */
+/* --- کدهای مربوط به عکس‌برداری فاکتور --- */
+/* ========================================= */
+
+.print-mode {
+    background-color: #fff !important;
+    padding: 30px !important;
+    border: none !important;
+    box-shadow: none !important;
+    max-width: 800px !important;
+    margin: 0 auto !important;
+}
+
+.print-mode .no-print {
+    display: none !important;
+}
+
+.print-mode .invoice-header-bg {
+    background-color: #fff !important;
+    border-bottom: 2px solid #333 !important;
+    border-radius: 0 !important;
+}
+
+.print-mode .table-container {
+    border: none !important;
+    overflow: visible !important; /* جلوگیری از اسکرول خوردن در عکس */
+}
+
+.print-mode table th {
+    background-color: #f8f9fa !important;
+    color: #111 !important;
+    border-bottom: 2px solid #ccc !important;
+}
+
+.print-mode .totals-box {
+    border: none !important;
+    padding: 0 !important;
 }
