@@ -149,17 +149,23 @@
                     <span style="font-weight: bold; color: #27ae60;"><span id="total-ship-discount-display">0.00</span> <span class="cur-sym">€</span></span>
                 </div>
 
-                <div class="total-row">
+                <div class="total-row print-ready-row"> <!-- کلاس جدید برای شناسایی هنگام عکس -->
                     <select id="shipping-type" class="no-print" style="border:none; background:transparent; font-size:15px; outline:none; text-align: right; cursor: pointer;">
                         <option value="shipping">Shipping Cost</option>
                         <option value="cargo">Cargo Cost</option>
                     </select>
                     <span class="only-print" style="display:none;" id="print-shipping-label">Shipping Cost</span>
-                    <input type="number" id="shipping-cost" placeholder="0" min="0">
+                    <div style="display:flex; align-items:center;">
+                        <input type="number" id="shipping-cost" placeholder="0" min="0" class="capture-input"> <!-- کلاس جدید -->
+                        <span class="capture-span" style="display:none;">0</span> <!-- متن جایگزین برای عکس -->
+                    </div>
                 </div>
-                <div class="total-row">
+                <div class="total-row print-ready-row"> <!-- کلاس جدید -->
                     <span id="lbl-discount">Discount</span>
-                    <input type="number" id="discount" placeholder="0" min="0">
+                    <div style="display:flex; align-items:center;">
+                        <input type="number" id="discount" placeholder="0" min="0" class="capture-input"> <!-- کلاس جدید -->
+                        <span class="capture-span" style="display:none;">0</span> <!-- متن جایگزین برای عکس -->
+                    </div>
                 </div>
                 <div class="total-row grand-total-row">
                     <span id="lbl-grandtotal" style="text-transform: uppercase; font-weight:900;">GRAND TOTAL</span>
