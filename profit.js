@@ -3,7 +3,7 @@ import { db, auth } from './firebase-config.js';
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-auth.js";
 import { collection, getDocs, doc, updateDoc, query, where } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
 
-// 🔴🔴🔴 ایمیل مدیریت خود را دقیقاً اینجا بنویس 🔴🔴🔴
+// 🔴🔴🔴 ایمیل مدیریت
 const ADMIN_EMAIL = "ramin.paradise800@gmail.com"; 
 
 let allFinalInvoices = [];
@@ -11,7 +11,7 @@ let filteredInvoices = [];
 let currentCalcFilter = 'pending'; 
 
 let exchangeRates = null;
-// 🔥 لیر (TRY) به کدهای ارزی داشبورد اضافه شد 🔥
+// 🔥 لیر (TRY) برای محاسبات کلان اضافه شد 🔥
 const currencyCodes = { "€": "EUR", "£": "GBP", "$": "USD", "₺": "TRY" };
 
 const tabBtns = document.querySelectorAll('.tab-btn');
@@ -207,7 +207,7 @@ function renderCalculator() {
         const dateStr = inv.timestamp ? new Date(inv.timestamp.toDate()).toLocaleDateString('en-GB') : '-';
         const shippingCharged = parseFloat(inv.shippingCost) || 0;
         const discount = parseFloat(inv.discount) || 0;
-        const sellerName = inv.salespersonName || 'نامشخص'; // گرفتن نام فروشنده
+        const sellerName = inv.salespersonName || 'نامشخص'; 
         
         let itemsHTML = '';
         (inv.items || []).forEach((item, idx) => {
