@@ -32,7 +32,8 @@ const countrySelect = document.getElementById('cust-country');
 const langSelector = document.getElementById('lang-selector');
 
 let currentCurrency = "€";
-const currencyCodes = { "€": "EUR", "£": "GBP", "$": "USD" };
+// 🔥 لیر (TRY) به کدهای ارزی اضافه شد 🔥
+const currencyCodes = { "€": "EUR", "£": "GBP", "$": "USD", "₺": "TRY" };
 
 const dictionary = {
     en: { invoice: "INVOICE", customer: "Customer", date: "Date:", seller: "Seller", desc: "Description", price: "Price", qty: "Quantity", total: "Total", subtotal: "TOTAL PRICE", discount: "Discount", grandtotal: "GRAND TOTAL", shipOpt: "Shipping Cost", cargoOpt: "Cargo Cost" },
