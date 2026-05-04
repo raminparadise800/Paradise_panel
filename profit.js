@@ -11,7 +11,8 @@ let filteredInvoices = [];
 let currentCalcFilter = 'pending'; 
 
 let exchangeRates = null;
-const currencyCodes = { "€": "EUR", "£": "GBP", "$": "USD" };
+// 🔥 لیر (TRY) به کدهای ارزی داشبورد اضافه شد 🔥
+const currencyCodes = { "€": "EUR", "£": "GBP", "$": "USD", "₺": "TRY" };
 
 const tabBtns = document.querySelectorAll('.tab-btn');
 const tabContents = document.querySelectorAll('.tab-content');
