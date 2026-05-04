@@ -32,7 +32,6 @@ const countrySelect = document.getElementById('cust-country');
 const langSelector = document.getElementById('lang-selector');
 
 let currentCurrency = "€";
-// 🔥 لیر (TRY) به کدهای ارزی اضافه شد 🔥
 const currencyCodes = { "€": "EUR", "£": "GBP", "$": "USD", "₺": "TRY" };
 
 const dictionary = {
@@ -359,14 +358,24 @@ saveExportBtn.addEventListener('click', async () => {
         printLabel.textContent = document.getElementById('shipping-type').options[document.getElementById('shipping-type').selectedIndex].text;
         printLabel.style.display = 'inline-block';
         
+        // 🔥 عملیات تبدیل تمام ورودی‌ها به متن ثابت برای عکس‌برداری 🔥
         const inputs = invoiceElement.querySelectorAll('input, select');
         const spans = [];
         inputs.forEach(input => {
             if(!input.classList.contains('no-print') && input.type !== 'hidden') {
                 const span = document.createElement('span');
-                span.textContent = input.value || '';
+                // دریافت آخرین مقداری که در صفحه دیده می‌شود
+                span.textContent = input.value || ''; 
                 span.style.cssText = 'font-weight:bold; font-size:14px;';
-                if(input.classList.contains('item-name')) span.style.textAlign = 'left';
+                if(input.classList.contains('item-name')) {
+                    span.style.textAlign = 'left';
+                } else if(input.id === 'shipping-cost' || input.id === 'discount') {
+                    // برای شیپینگ و تخفیف عرض ثابت می‌دهیم تا ساختار به هم نریزد
+                    span.style.display = 'inline-block';
+                    span.style.width = '90px';
+                    span.style.textAlign = 'center';
+                }
+                
                 input.parentNode.insertBefore(span, input);
                 input.style.display = 'none';
                 spans.push({input, span});
@@ -375,7 +384,6 @@ saveExportBtn.addEventListener('click', async () => {
 
         invoiceElement.classList.add('print-mode');
 
-        // 🔥 مجبور کردن دوربین برای در نظر گرفتن عرض کامپیوتر 🔥
         html2canvas(invoiceElement, { 
             scale: 2, 
             useCORS: true, 
@@ -390,6 +398,7 @@ saveExportBtn.addEventListener('click', async () => {
                 const link = document.createElement('a');
                 link.download = fileName; link.href = URL.createObjectURL(blob); link.click();
                 
+                // 🔥 برگرداندن به حالت اول بعد از عکس گرفتن 🔥
                 invoiceElement.classList.remove('print-mode');
                 printLabel.style.display = 'none';
                 spans.forEach(item => { item.span.remove(); item.input.style.display = ''; });
