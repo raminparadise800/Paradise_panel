@@ -9,56 +9,124 @@ const ADMIN_EMAIL = "ramin.paradise800@gmail.com";
 let isAdmin = false;
 
 const searchInput = document.getElementById('search-input');
+const sortSelect = document.getElementById('sort-select'); // انتخابگر مرتب‌سازی
 const allCustomersView = document.getElementById('all-customers-view');
 const allCustomersBody = document.getElementById('all-customers-body');
 const profileContent = document.getElementById('profile-content');
 const backToListBtn = document.getElementById('back-to-list-btn');
 
 let allCustomersData = [];
+let exchangeRates = null; // برای هم‌ارز کردن مبالغ به یورو جهت مرتب‌سازی
+const currencyCodes = { "€": "EUR", "£": "GBP", "$": "USD", "₺": "TRY" };
 
-// بررسی هویت به محض لود شدن صفحه
-onAuthStateChanged(auth, (user) => {
+onAuthStateChanged(auth, async (user) => {
     if (user) {
-        document.body.style.opacity = "1"; // روشن کردن صفحه
+        document.body.style.opacity = "1"; 
         if (user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
             isAdmin = true;
-            // نمایش عناصر مخصوص ادمین
             document.querySelectorAll('.admin-only').forEach(el => {
                 el.style.display = el.tagName === 'TH' ? 'table-cell' : 'block';
             });
         }
+        await fetchExchangeRates(); // ابتدا نرخ ارز دریافت می‌شود
         loadAllCustomers();
     } else {
         window.location.href = "login.html";
     }
 });
 
+// گرفتن نرخ روز ارزها برای اینکه بتوانیم مشتریانی که پوند، دلار یا لیر خریده‌اند را عادلانه مرتب کنیم
+async function fetchExchangeRates() {
+    try {
+        const response = await fetch(`https://open.er-api.com/v6/latest/EUR`);
+        const data = await response.json();
+        exchangeRates = data.rates;
+    } catch (e) { console.error("Exchange API Error:", e); }
+}
+
+function convertToEuro(amount, currencySymbol) {
+    if (!amount || !exchangeRates) return amount || 0;
+    const code = currencyCodes[currencySymbol] || "EUR";
+    if (code === "EUR") return amount;
+    return amount / exchangeRates[code]; 
+}
+
 async function loadAllCustomers() {
     try {
+        // ۱. دریافت تمام مشتریان
         const snap = await getDocs(collection(db, "Customers"));
-        allCustomersData = [];
-        snap.forEach(doc => allCustomersData.push({ id: doc.id, ...doc.data() }));
-        renderCustomersList(allCustomersData);
+        let tempCustomers = [];
+        snap.forEach(doc => tempCustomers.push({ id: doc.id, ...doc.data(), totalSpentEUR: 0, displaySpent: "0 €", hasFinalPurchase: false }));
+
+        // ۲. دریافت تمام فاکتورهای "نهایی" برای استخراج ارزش مشتری
+        const qRetail = query(collection(db, "Retail_Invoices"), where("status", "==", "نهایی"));
+        const qWholesale = query(collection(db, "Wholesale_Invoices"), where("status", "==", "نهایی"));
+        const [retSnap, whoSnap] = await Promise.all([getDocs(qRetail), getDocs(qWholesale)]);
+        
+        let allFinalInvoices = [];
+        retSnap.forEach(d => allFinalInvoices.push(d.data()));
+        whoSnap.forEach(d => allFinalInvoices.push(d.data()));
+
+        // ۳. نگاشت فاکتورها به مشتریان
+        tempCustomers.forEach(cust => {
+            let spentMap = {}; // برای نمایش: چقدر یورو، چقدر دلار و...
+            let totalEurCalc = 0; // برای مرتب سازی
+
+            allFinalInvoices.forEach(inv => {
+                if (inv.customerPhone === cust.phone) {
+                    cust.hasFinalPurchase = true; // مشتری فعال است
+                    totalEurCalc += convertToEuro(inv.grandTotal, inv.currency);
+                    
+                    if (!spentMap[inv.currency]) spentMap[inv.currency] = 0;
+                    spentMap[inv.currency] += inv.grandTotal;
+                }
+            });
+
+            cust.totalSpentEUR = totalEurCalc; // ذخیره برای مرتب‌سازی پشت‌صحنه
+            
+            // ساختن متن نمایشی مبالغ خرید
+            let spentStrings = [];
+            for (const [curr, amt] of Object.entries(spentMap)) {
+                spentStrings.push(`${amt.toFixed(2)} ${curr}`);
+            }
+            cust.displaySpent = spentStrings.length > 0 ? spentStrings.join(' / ') : "0";
+        });
+
+        allCustomersData = tempCustomers;
+        
+        // مرتب‌سازی پیش‌فرض (مشتریانی که بیشترین خرید را دارند بالا باشند)
+        sortSelect.value = "spent-high"; 
+        applyFiltersAndSort();
+
     } catch (e) {
-        allCustomersBody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:red;">خطا در دیتابیس</td></tr>';
+        console.error(e);
+        allCustomersBody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:red;">خطا در دریافت اطلاعات دیتابیس</td></tr>';
     }
 }
 
 function renderCustomersList(data) {
     allCustomersBody.innerHTML = '';
     if(data.length === 0) {
-        allCustomersBody.innerHTML = '<tr><td colspan="4" style="text-align:center;">مشتری یافت نشد.</td></tr>';
+        allCustomersBody.innerHTML = '<tr><td colspan="6" style="text-align:center;">مشتری یافت نشد.</td></tr>';
         return;
     }
     
     data.forEach(cust => {
+        // منطق استایل دهی مشتریان فعال
+        const phoneClass = cust.hasFinalPurchase ? "phone-highlight-green" : "phone-normal";
+        const statusBadge = cust.hasFinalPurchase 
+            ? `<span class="badge badge-success">مشتری فعال</span>` 
+            : `<span class="badge badge-secondary">بدون خرید نهایی</span>`;
+
         const tr = document.createElement('tr');
         tr.innerHTML = `
-            <td style="font-weight:bold; color:#2c3e50;">${cust.name || 'نامشخص'}</td>
-            <td style="direction:ltr; text-align:right;">${cust.phone}</td>
-            <td>${cust.country || '-'}</td>
+            <td style="font-weight:bold; color:#2c3e50; font-size:15px;">${cust.name || 'نامشخص'}</td>
+            <td class="${phoneClass}" style="direction:ltr; text-align:right; font-size:15px;">${cust.phone}</td>
+            <td style="color:#555;">${cust.country || '-'}</td>
+            <td class="total-spent-cell">${cust.displaySpent}</td>
+            <td style="text-align:center;">${statusBadge}</td>
             <td style="text-align:center;">
-                <button class="view-profile-btn" data-phone="${cust.phone}" style="background:#3498db; color:white; border:none; padding:6px 12px; border-radius:4px; cursor:pointer;">نمایش پروفایل</button>
+                <button class="view-profile-btn" data-phone="${cust.phone}" style="background:#3498db; color:white; border:none; padding:6px 15px; border-radius:4px; cursor:pointer; font-weight:bold; transition: 0.2s;">مشاهده پرونده</button>
             </td>
         `;
         allCustomersBody.appendChild(tr);
@@ -71,29 +139,48 @@ function renderCustomersList(data) {
     });
 }
 
-searchInput.addEventListener('input', (e) => {
-    const term = e.target.value.toLowerCase();
-    const filtered = allCustomersData.filter(c => 
-        (c.name || '').toLowerCase().includes(term) || (c.phone || '').includes(term)
+function applyFiltersAndSort() {
+    const term = searchInput.value.toLowerCase();
+    const sortType = sortSelect.value;
+
+    // فیلتر کردن
+    let result = allCustomersData.filter(c => 
+        (c.name || '').toLowerCase().includes(term) || 
+        (c.phone || '').includes(term) ||
+        (c.country || '').toLowerCase().includes(term)
     );
-    renderCustomersList(filtered);
-});
+
+    // مرتب‌سازی هوشمند
+    if (sortType === 'spent-high') {
+        result.sort((a, b) => b.totalSpentEUR - a.totalSpentEUR);
+    } else if (sortType === 'spent-low') {
+        result.sort((a, b) => a.totalSpentEUR - b.totalSpentEUR);
+    } else if (sortType === 'name-asc') {
+        result.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    } 
+
+    renderCustomersList(result);
+}
+
+// گوش دادن به تغییرات جستجو و منوی کشویی مرتب‌سازی
+searchInput.addEventListener('input', applyFiltersAndSort);
+sortSelect.addEventListener('change', applyFiltersAndSort);
 
 backToListBtn.addEventListener('click', () => {
     profileContent.style.display = 'none';
     allCustomersView.style.display = 'block';
-    searchInput.style.display = 'block';
+    document.querySelector('.search-sort-container').style.display = 'flex';
     searchInput.value = '';
-    renderCustomersList(allCustomersData);
+    applyFiltersAndSort(); // دوباره لیست مرتب را لود میکند
 });
 
 async function fetchCustomerProfile(phone) {
     allCustomersView.style.display = 'none';
-    searchInput.style.display = 'none';
+    document.querySelector('.search-sort-container').style.display = 'none';
     profileContent.style.display = 'block';
 
     const colSpan = isAdmin ? "8" : "7";
-    document.getElementById('customer-invoices').innerHTML = `<tr><td colspan="${colSpan}" style="text-align:center;">در حال دریافت سوابق...</td></tr>`;
+    document.getElementById('customer-invoices').innerHTML = `<tr><td colspan="${colSpan}" style="text-align:center; padding: 20px;">در حال دریافت سوابق دقیق... ⏳</td></tr>`;
 
     try {
         const custSnap = await getDoc(doc(db, "Customers", phone));
@@ -118,7 +205,7 @@ async function fetchCustomerProfile(phone) {
 
         let finalCount = 0, wholesaleCount = 0;
         let spentByCurrency = {}; 
-        let profitByCurrency = {}; // محاسبه سود خالص مشتری
+        let profitByCurrency = {}; 
         
         const tableBody = document.getElementById('customer-invoices');
         tableBody.innerHTML = '';
@@ -130,11 +217,9 @@ async function fetchCustomerProfile(phone) {
                 const isFinal = inv.status === 'نهایی';
                 if (isFinal) {
                     finalCount++;
-                    // مجموع خرید مشتری
                     if (!spentByCurrency[inv.currency]) spentByCurrency[inv.currency] = 0;
                     spentByCurrency[inv.currency] += inv.grandTotal;
                     
-                    // مجموع سودآوری مشتری (فقط برای فاکتورهایی که سودشان محاسبه شده)
                     if (inv.isProfitCalculated && inv.netProfit !== undefined) {
                         if (!profitByCurrency[inv.currency]) profitByCurrency[inv.currency] = 0;
                         profitByCurrency[inv.currency] += inv.netProfit;
@@ -148,7 +233,6 @@ async function fetchCustomerProfile(phone) {
                 
                 const editLink = `retail.html?edit=true&id=${inv.id}&col=${inv.collectionName}`;
                 
-                // تولید ستون سود فقط در صورتی که ادمین باشد
                 let adminProfitTd = '';
                 if (isAdmin) {
                     const profitDisplay = (inv.isProfitCalculated && inv.netProfit !== undefined) ? 
@@ -161,12 +245,12 @@ async function fetchCustomerProfile(phone) {
                 tr.innerHTML = `
                     <td style="font-weight: bold;"><a href="${editLink}" style="color: #2980b9; text-transform: uppercase; text-decoration: underline;">${inv.invoiceNumber || '-'}</a></td>
                     <td>${dateStr}</td>
-                    <td>${inv.invoiceType === 'wholesale' ? 'عمده' : 'تک'}</td>
+                    <td><span style="font-size: 12px; padding: 3px 6px; border-radius: 4px; background: ${inv.invoiceType === 'wholesale' ? '#f5eef8; color: #8e44ad;' : '#ebf5fb; color: #2980b9;'}">${inv.invoiceType === 'wholesale' ? 'عمده' : 'تک'}</span></td>
                     <td style="color:${statusColor}; font-weight:bold;">${inv.status || 'ثبت اولیه'}</td>
                     <td>${inv.salespersonName || '-'}</td>
                     <td style="font-weight:bold; color:#2980b9;">${inv.grandTotal.toFixed(2)} ${inv.currency}</td>
                     ${adminProfitTd}
-                    <td style="text-align:center;"><a href="${editLink}" class="btn-small" style="background:#f39c12; padding:4px 8px; color:white; text-decoration:none; border-radius:4px; font-size:12px;">نمایش / ویرایش</a></td>
+                    <td style="text-align:center;"><a href="${editLink}" class="btn-small" style="background:#f39c12; padding:6px 12px; color:white; text-decoration:none; border-radius:4px; font-size:12px; font-weight: bold;">نمایش / ویرایش</a></td>
                 `;
                 tableBody.appendChild(tr);
             });
@@ -176,12 +260,10 @@ async function fetchCustomerProfile(phone) {
         document.getElementById('stat-final-inv').textContent = finalCount;
         document.getElementById('stat-wholesale-inv').textContent = wholesaleCount;
 
-        // نمایش مبالغ خرید
         let spentText = [];
         for (const [curr, amt] of Object.entries(spentByCurrency)) spentText.push(`${amt.toFixed(2)} ${curr}`);
         document.getElementById('stat-total-spent').textContent = spentText.length > 0 ? spentText.join(" / ") : "0";
 
-        // نمایش مبالغ سود (فقط برای ادمین رندر می‌شود)
         if (isAdmin) {
             let profitText = [];
             for (const [curr, amt] of Object.entries(profitByCurrency)) profitText.push(`${amt.toFixed(2)} ${curr}`);
