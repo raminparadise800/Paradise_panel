@@ -235,7 +235,7 @@ function renderSellersStats() {
 }
 
 // ----------------------------------------------------
-// موتور هوشمند رسم نمودار و استایل‌دهی جدول (بدون نیاز به HTML)
+// موتور هوشمند رسم نمودار و استایل‌دهی جدول
 // ----------------------------------------------------
 let retailChartInstance = null;
 let wholesaleChartInstance = null;
@@ -244,7 +244,6 @@ function drawCharts(labels, retData, whoData) {
     const table = document.getElementById('sellers-stats-body').closest('table');
     let chartsContainer = document.getElementById('sellers-charts-container');
     
-    // اگر کانتینر نمودارها وجود نداشت، آن را دقیقاً بالای جدول خلق می‌کنیم
     if (!chartsContainer) {
         chartsContainer = document.createElement('div');
         chartsContainer.id = 'sellers-charts-container';
@@ -265,7 +264,6 @@ function drawCharts(labels, retData, whoData) {
         `;
         table.parentNode.insertBefore(chartsContainer, table);
         
-        // تغییر مدرن سرستون‌های جدول (با تزریق CSS)
         const thead = table.querySelector('thead tr');
         if(thead) {
             thead.innerHTML = `
@@ -277,7 +275,6 @@ function drawCharts(labels, retData, whoData) {
         }
     }
 
-    // دانلود کتابخانه Chart.js به صورت هوشمند
     if (typeof Chart === 'undefined') {
         const script = document.createElement('script');
         script.src = "https://cdn.jsdelivr.net/npm/chart.js";
@@ -293,7 +290,6 @@ function renderPieCharts(labels, retData, whoData) {
     const whoCtx = document.getElementById('wholesale-pie-chart').getContext('2d');
     const colors = ['#3498db', '#e74c3c', '#2ecc71', '#f1c40f', '#9b59b6', '#e67e22', '#1abc9c', '#34495e', '#d35400', '#7f8c8d'];
 
-    // نمودار لوکس تک‌فروشی
     if (retailChartInstance) retailChartInstance.destroy();
     retailChartInstance = new Chart(retCtx, {
         type: 'doughnut',
@@ -301,7 +297,6 @@ function renderPieCharts(labels, retData, whoData) {
         options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { font: { family: 'Tahoma' } } } }, cutout: '65%' }
     });
 
-    // نمودار لوکس عمده‌فروشی
     if (wholesaleChartInstance) wholesaleChartInstance.destroy();
     wholesaleChartInstance = new Chart(whoCtx, {
         type: 'doughnut',
@@ -328,4 +323,154 @@ function renderCalculator() {
     listToShow.forEach(inv => {
         const div = document.createElement('div');
         div.className = 'inv-card';
-        const dateStr = inv.timestamp
+        const dateStr = inv.timestamp ? new Date(inv.timestamp.toDate()).toLocaleDateString('en-GB') : '-';
+        const shippingCharged = parseFloat(inv.shippingCost) || 0;
+        const discount = parseFloat(inv.discount) || 0;
+        const sellerName = inv.salespersonName || 'نامشخص'; 
+        
+        let itemsHTML = '';
+        (inv.items || []).forEach((item, idx) => {
+            const cost = item.costPrice || 0;
+            itemsHTML += `<tr>
+                <td style="text-align:left;">${item.name}</td>
+                <td>${item.qty}</td>
+                <td>${item.price} ${inv.currency}</td>
+                <td><input type="number" class="item-cost-input" data-idx="${idx}" value="${cost}" step="0.01" placeholder="خرید تکی"> ${inv.currency}</td>
+            </tr>`;
+        });
+
+        div.innerHTML = `
+            <div class="inv-header">
+                <div>
+                    <span style="font-size:18px; font-weight:bold;">${inv.invoiceNumber}</span>
+                    <span style="margin-right:15px; font-size:12px; background:#f1c40f; color:#000; padding:3px 8px; border-radius:4px;">${inv.invoiceType === 'retail' ? 'تک فروشی' : 'عمده فروشی'}</span>
+                </div>
+                <div style="font-size:14px;">
+                    مشتری: ${inv.customerName} | 
+                    <span style="color: #a29bfe; font-weight: bold; margin: 0 5px;">👤 فروشنده: ${sellerName}</span> | 
+                    مبلغ کل فاکتور: <span style="color:#f1c40f; font-weight:bold;">${inv.grandTotal} ${inv.currency}</span>
+                </div>
+            </div>
+            <div class="inv-body">
+                <table class="items-table">
+                    <thead style="background:#ecf0f1;"><tr><th style="text-align:left;">محصول</th><th>تعداد</th><th>فروش (تکی)</th><th>خرید (تکی)</th></tr></thead>
+                    <tbody>${itemsHTML}</tbody>
+                </table>
+                <div style="background:#fff; padding:15px; border:1px solid #ddd; border-radius:4px;">
+                    
+                    <div style="display:flex; justify-content:space-between; flex-wrap: wrap; gap: 15px; margin-bottom: 15px; border-bottom: 1px dashed #ccc; padding-bottom: 15px;">
+                        <div style="flex:1;">
+                            <div style="margin-bottom: 8px; font-size: 14px; color: #2980b9; font-weight: bold;">
+                                📦 دریافتی از مشتری بابت ارسال در فاکتور: ${shippingCharged} ${inv.currency}
+                            </div>
+                            <label style="font-weight:bold; color: #2c3e50;">🚚 پرداختی واقعی شما بابت ارسال/کارگو:</label>
+                            <br>
+                            <input type="number" id="actual-ship-${inv.id}" class="live-calc-input" value="${inv.actualShippingCost || 0}" step="0.01" style="width:120px; padding:8px; margin-top:5px; border: 1px solid #ccc; border-radius: 4px;"> ${inv.currency}
+                        </div>
+                        <div style="flex:1; background: #f8f9fa; padding: 15px; border-radius: 6px; text-align: right; font-size: 14px;">
+                            <p style="margin-bottom:5px;">🛒 سود کالاها: <span id="items-profit-${inv.id}" style="font-weight:bold;">0.00</span> ${inv.currency}</p>
+                            <p style="margin-bottom:5px;">📦 سود/زیان ارسال: <span id="shipping-profit-${inv.id}" style="font-weight:bold;">0.00</span> ${inv.currency}</p>
+                            <p style="color:#e74c3c; margin-bottom:0;">📉 تخفیف فاکتور: ${discount} ${inv.currency}</p>
+                        </div>
+                    </div>
+
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <span style="font-weight:bold; font-size:18px;">سود خالص نهایی: <span id="profit-display-${inv.id}">${inv.netProfit ? inv.netProfit.toFixed(2) : '0.00'}</span> ${inv.currency}</span>
+                        <button class="btn-success save-profit-btn" data-id="${inv.id}" data-col="${inv.collectionName}" style="padding:10px 20px; border:none; border-radius:4px; cursor:pointer;">💾 تایید و ذخیره سود</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        calcList.appendChild(div);
+
+        const updateLiveCalc = () => {
+            let totalSalesGoods = 0;
+            let totalCostGoods = 0;
+            
+            div.querySelectorAll('.item-cost-input').forEach((input, idx) => {
+                const cost = parseFloat(input.value) || 0;
+                const qty = parseFloat(inv.items[idx].qty) || 0;
+                const price = parseFloat(inv.items[idx].price) || 0;
+                totalSalesGoods += (price * qty);
+                totalCostGoods += (cost * qty);
+            });
+            
+            const actualShip = parseFloat(document.getElementById(`actual-ship-${inv.id}`).value) || 0;
+            
+            const itemsProfit = totalSalesGoods - totalCostGoods;
+            const shippingProfit = shippingCharged - actualShip;
+            const netProfit = itemsProfit + shippingProfit - discount; 
+
+            document.getElementById(`items-profit-${inv.id}`).textContent = itemsProfit.toFixed(2);
+            
+            const shipProfEl = document.getElementById(`shipping-profit-${inv.id}`);
+            shipProfEl.textContent = shippingProfit.toFixed(2);
+            shipProfEl.style.color = shippingProfit < 0 ? '#e74c3c' : '#27ae60'; 
+            
+            const netProfEl = document.getElementById(`profit-display-${inv.id}`);
+            netProfEl.textContent = netProfit.toFixed(2);
+            netProfEl.style.color = netProfit < 0 ? '#e74c3c' : '#27ae60';
+        };
+
+        div.querySelectorAll('.item-cost-input, .live-calc-input').forEach(inp => {
+            inp.addEventListener('input', updateLiveCalc);
+        });
+        
+        updateLiveCalc(); 
+
+        const saveBtn = div.querySelector('.save-profit-btn');
+        saveBtn.addEventListener('click', async () => {
+            saveBtn.textContent = "⏳...";
+            saveBtn.disabled = true;
+
+            const updatedItems = [...inv.items];
+            let totalCostOfGoods = 0;
+            
+            div.querySelectorAll('.item-cost-input').forEach(input => {
+                const idx = input.dataset.idx;
+                const cost = parseFloat(input.value) || 0;
+                updatedItems[idx].costPrice = cost;
+                totalCostOfGoods += (cost * updatedItems[idx].qty); 
+            });
+
+            const actualShip = parseFloat(document.getElementById(`actual-ship-${inv.id}`).value) || 0;
+            const netProfit = inv.grandTotal - (totalCostOfGoods + actualShip);
+
+            try {
+                await updateDoc(doc(db, inv.collectionName, inv.id), {
+                    items: updatedItems,
+                    actualShippingCost: actualShip,
+                    costOfGoods: totalCostOfGoods,
+                    netProfit: netProfit,
+                    isProfitCalculated: true
+                });
+
+                saveBtn.textContent = "✔️ ذخیره شد";
+                
+                const invIndexRaw = allInvoicesRaw.findIndex(i => i.id === inv.id);
+                if (invIndexRaw > -1) {
+                    allInvoicesRaw[invIndexRaw].items = updatedItems;
+                    allInvoicesRaw[invIndexRaw].actualShippingCost = actualShip;
+                    allInvoicesRaw[invIndexRaw].netProfit = netProfit;
+                    allInvoicesRaw[invIndexRaw].isProfitCalculated = true;
+                }
+                
+                applyDateFilter(); 
+
+                setTimeout(() => {
+                    if (currentCalcFilter === 'pending') {
+                        div.style.display = 'none';
+                    } else {
+                        saveBtn.textContent = "💾 تایید و ذخیره سود";
+                        saveBtn.disabled = false;
+                    }
+                }, 1000);
+
+            } catch (e) {
+                alert("خطا در ذخیره اطلاعات.");
+                saveBtn.disabled = false;
+                saveBtn.textContent = "💾 تایید و ذخیره سود";
+            }
+        });
+    });
+}
