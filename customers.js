@@ -9,14 +9,14 @@ const ADMIN_EMAIL = "ramin.paradise800@gmail.com";
 let isAdmin = false;
 
 const searchInput = document.getElementById('search-input');
-const sortSelect = document.getElementById('sort-select'); // انتخابگر مرتب‌سازی
+const sortSelect = document.getElementById('sort-select'); 
 const allCustomersView = document.getElementById('all-customers-view');
 const allCustomersBody = document.getElementById('all-customers-body');
 const profileContent = document.getElementById('profile-content');
 const backToListBtn = document.getElementById('back-to-list-btn');
 
 let allCustomersData = [];
-let exchangeRates = null; // برای هم‌ارز کردن مبالغ به یورو جهت مرتب‌سازی
+let exchangeRates = null; 
 const currencyCodes = { "€": "EUR", "£": "GBP", "$": "USD", "₺": "TRY" };
 
 onAuthStateChanged(auth, async (user) => {
@@ -28,14 +28,13 @@ onAuthStateChanged(auth, async (user) => {
                 el.style.display = el.tagName === 'TH' ? 'table-cell' : 'block';
             });
         }
-        await fetchExchangeRates(); // ابتدا نرخ ارز دریافت می‌شود
+        await fetchExchangeRates(); 
         loadAllCustomers();
     } else {
         window.location.href = "login.html";
     }
 });
 
-// گرفتن نرخ روز ارزها برای اینکه بتوانیم مشتریانی که پوند، دلار یا لیر خریده‌اند را عادلانه مرتب کنیم
 async function fetchExchangeRates() {
     try {
         const response = await fetch(`https://open.er-api.com/v6/latest/EUR`);
@@ -53,12 +52,10 @@ function convertToEuro(amount, currencySymbol) {
 
 async function loadAllCustomers() {
     try {
-        // ۱. دریافت تمام مشتریان
         const snap = await getDocs(collection(db, "Customers"));
         let tempCustomers = [];
-        snap.forEach(doc => tempCustomers.push({ id: doc.id, ...doc.data(), totalSpentEUR: 0, displaySpent: "0 €", hasFinalPurchase: false }));
+        snap.forEach(doc => tempCustomers.push({ id: doc.id, ...doc.data(), totalSpentEUR: 0, displaySpent: "0.00 €", hasFinalPurchase: false }));
 
-        // ۲. دریافت تمام فاکتورهای "نهایی" برای استخراج ارزش مشتری
         const qRetail = query(collection(db, "Retail_Invoices"), where("status", "==", "نهایی"));
         const qWholesale = query(collection(db, "Wholesale_Invoices"), where("status", "==", "نهایی"));
         const [retSnap, whoSnap] = await Promise.all([getDocs(qRetail), getDocs(qWholesale)]);
@@ -67,34 +64,24 @@ async function loadAllCustomers() {
         retSnap.forEach(d => allFinalInvoices.push(d.data()));
         whoSnap.forEach(d => allFinalInvoices.push(d.data()));
 
-        // ۳. نگاشت فاکتورها به مشتریان
         tempCustomers.forEach(cust => {
-            let spentMap = {}; // برای نمایش: چقدر یورو، چقدر دلار و...
-            let totalEurCalc = 0; // برای مرتب سازی
+            let totalEurCalc = 0; // متغیر تجمیع کل خریدها به یورو
 
             allFinalInvoices.forEach(inv => {
                 if (inv.customerPhone === cust.phone) {
-                    cust.hasFinalPurchase = true; // مشتری فعال است
+                    cust.hasFinalPurchase = true; 
+                    // تبدیل هر نوع ارزی به یورو و جمع زدن آن
                     totalEurCalc += convertToEuro(inv.grandTotal, inv.currency);
-                    
-                    if (!spentMap[inv.currency]) spentMap[inv.currency] = 0;
-                    spentMap[inv.currency] += inv.grandTotal;
                 }
             });
 
-            cust.totalSpentEUR = totalEurCalc; // ذخیره برای مرتب‌سازی پشت‌صحنه
-            
-            // ساختن متن نمایشی مبالغ خرید
-            let spentStrings = [];
-            for (const [curr, amt] of Object.entries(spentMap)) {
-                spentStrings.push(`${amt.toFixed(2)} ${curr}`);
-            }
-            cust.displaySpent = spentStrings.length > 0 ? spentStrings.join(' / ') : "0";
+            cust.totalSpentEUR = totalEurCalc; 
+            // نمایش یکپارچه و تمیز عدد نهایی
+            cust.displaySpent = totalEurCalc > 0 ? `${totalEurCalc.toFixed(2)} €` : "0.00 €";
         });
 
         allCustomersData = tempCustomers;
         
-        // مرتب‌سازی پیش‌فرض (مشتریانی که بیشترین خرید را دارند بالا باشند)
         sortSelect.value = "spent-high"; 
         applyFiltersAndSort();
 
@@ -112,7 +99,6 @@ function renderCustomersList(data) {
     }
     
     data.forEach(cust => {
-        // منطق استایل دهی مشتریان فعال
         const phoneClass = cust.hasFinalPurchase ? "phone-highlight-green" : "phone-normal";
         const statusBadge = cust.hasFinalPurchase 
             ? `<span class="badge badge-success">مشتری فعال</span>` 
@@ -143,14 +129,12 @@ function applyFiltersAndSort() {
     const term = searchInput.value.toLowerCase();
     const sortType = sortSelect.value;
 
-    // فیلتر کردن
     let result = allCustomersData.filter(c => 
         (c.name || '').toLowerCase().includes(term) || 
         (c.phone || '').includes(term) ||
         (c.country || '').toLowerCase().includes(term)
     );
 
-    // مرتب‌سازی هوشمند
     if (sortType === 'spent-high') {
         result.sort((a, b) => b.totalSpentEUR - a.totalSpentEUR);
     } else if (sortType === 'spent-low') {
@@ -162,7 +146,6 @@ function applyFiltersAndSort() {
     renderCustomersList(result);
 }
 
-// گوش دادن به تغییرات جستجو و منوی کشویی مرتب‌سازی
 searchInput.addEventListener('input', applyFiltersAndSort);
 sortSelect.addEventListener('change', applyFiltersAndSort);
 
@@ -171,7 +154,7 @@ backToListBtn.addEventListener('click', () => {
     allCustomersView.style.display = 'block';
     document.querySelector('.search-sort-container').style.display = 'flex';
     searchInput.value = '';
-    applyFiltersAndSort(); // دوباره لیست مرتب را لود میکند
+    applyFiltersAndSort(); 
 });
 
 async function fetchCustomerProfile(phone) {
@@ -204,8 +187,8 @@ async function fetchCustomerProfile(phone) {
         allInvoices.sort((a, b) => (b.timestamp?.toMillis() || 0) - (a.timestamp?.toMillis() || 0));
 
         let finalCount = 0, wholesaleCount = 0;
-        let spentByCurrency = {}; 
-        let profitByCurrency = {}; 
+        let totalSpentEurProfile = 0; 
+        let totalProfitEurProfile = 0; 
         
         const tableBody = document.getElementById('customer-invoices');
         tableBody.innerHTML = '';
@@ -217,12 +200,11 @@ async function fetchCustomerProfile(phone) {
                 const isFinal = inv.status === 'نهایی';
                 if (isFinal) {
                     finalCount++;
-                    if (!spentByCurrency[inv.currency]) spentByCurrency[inv.currency] = 0;
-                    spentByCurrency[inv.currency] += inv.grandTotal;
+                    // تجمیع کل مبالغ به یورو در پروفایل
+                    totalSpentEurProfile += convertToEuro(inv.grandTotal, inv.currency);
                     
                     if (inv.isProfitCalculated && inv.netProfit !== undefined) {
-                        if (!profitByCurrency[inv.currency]) profitByCurrency[inv.currency] = 0;
-                        profitByCurrency[inv.currency] += inv.netProfit;
+                        totalProfitEurProfile += convertToEuro(inv.netProfit, inv.currency);
                     }
                 }
                 
@@ -260,14 +242,11 @@ async function fetchCustomerProfile(phone) {
         document.getElementById('stat-final-inv').textContent = finalCount;
         document.getElementById('stat-wholesale-inv').textContent = wholesaleCount;
 
-        let spentText = [];
-        for (const [curr, amt] of Object.entries(spentByCurrency)) spentText.push(`${amt.toFixed(2)} ${curr}`);
-        document.getElementById('stat-total-spent').textContent = spentText.length > 0 ? spentText.join(" / ") : "0";
+        // نمایش یکپارچه مقادیر به یورو در پروفایل مشتری
+        document.getElementById('stat-total-spent').textContent = totalSpentEurProfile > 0 ? `${totalSpentEurProfile.toFixed(2)} €` : "0.00 €";
 
         if (isAdmin) {
-            let profitText = [];
-            for (const [curr, amt] of Object.entries(profitByCurrency)) profitText.push(`${amt.toFixed(2)} ${curr}`);
-            document.getElementById('stat-total-profit').textContent = profitText.length > 0 ? profitText.join(" / ") : "0";
+            document.getElementById('stat-total-profit').textContent = totalProfitEurProfile > 0 ? `${totalProfitEurProfile.toFixed(2)} €` : "0.00 €";
         }
 
     } catch (error) {
