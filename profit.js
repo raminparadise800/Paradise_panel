@@ -6,10 +6,11 @@ import { collection, getDocs, doc, updateDoc, query, where } from "https://www.g
 // 🔴🔴🔴 ایمیل مدیریت
 const ADMIN_EMAIL = "ramin.paradise800@gmail.com"; 
 
-let allInvoicesRaw = []; // تمام فاکتورها برای محاسبه نرخ تبدیل
+let allInvoicesRaw = []; // تمام فاکتورها برای محاسبه نرخ تبدیل و روند زمانی
 let filteredAllInvoices = []; 
-let filteredFinalInvoices = []; // فقط فاکتورهای نهایی برای محاسبه سود و حجم
+let filteredFinalInvoices = []; // فقط فاکتورهای نهایی برای محاسبه سود و حجم در بازه فیلتر
 let currentCalcFilter = 'pending'; 
+let currentTrendView = 'monthly'; // وضعیت پیش‌فرض نمودار روند زمان
 
 let exchangeRates = null;
 const currencyCodes = { "€": "EUR", "£": "GBP", "$": "USD", "₺": "TRY" };
@@ -70,7 +71,6 @@ document.getElementById('filter-completed').addEventListener('click', () => { cu
 async function loadData() {
     try {
         allInvoicesRaw = [];
-        // دریافت تمام فاکتورها (چه اولیه و چه نهایی) برای محاسبه قدرت فروشندگان
         const retSnap = await getDocs(collection(db, "Retail_Invoices"));
         retSnap.forEach(doc => allInvoicesRaw.push({ id: doc.id, collectionName: "Retail_Invoices", ...doc.data() }));
 
@@ -106,7 +106,6 @@ function applyDateFilter() {
         return invDate >= startDate && invDate <= endDate;
     });
 
-    // جداسازی فاکتورهای نهایی برای باکس‌های مالی
     filteredFinalInvoices = filteredAllInvoices.filter(inv => inv.status === 'نهایی');
 
     updateDashboard();
@@ -148,6 +147,27 @@ function updateDashboard() {
     document.getElementById('dash-retail-profit').textContent = `${retProf.toFixed(2)} €`;
     document.getElementById('dash-wholesale-profit').textContent = `${whoProf.toFixed(2)} €`;
 
+    // 🔥 تزریق پویای کارت مجموع کل سود خالص سیستم 🔥
+    const totalNetProfitEUR = retProf + whoProf;
+    let totalProfitCard = document.getElementById('dash-total-net-profit');
+    if (!totalProfitCard) {
+        const wholesaleProfitCard = document.getElementById('dash-wholesale-profit').closest('.summary-card');
+        if (wholesaleProfitCard && wholesaleProfitCard.parentNode) {
+            const newCard = document.createElement('div');
+            newCard.className = 'summary-card';
+            newCard.style.cssText = 'background: linear-gradient(135deg, #11998e, #38ef7d); color: white; border: none; box-shadow: 0 4px 15px rgba(46, 204, 113, 0.2);';
+            newCard.innerHTML = `
+                <h4 style="color: rgba(255,255,255,0.85); font-size: 13px; margin-bottom: 10px; font-weight: bold;">📊 مجموع کل سود خالص فاکتورها</h4>
+                <span id="dash-total-net-profit" style="font-size: 26px; font-weight: bold;">0.00 €</span>
+            `;
+            wholesaleProfitCard.parentNode.appendChild(newCard);
+            totalProfitCard = document.getElementById('dash-total-net-profit');
+        }
+    }
+    if (totalProfitCard) {
+        totalProfitCard.textContent = `${totalNetProfitEUR.toFixed(2)} €`;
+    }
+
     const sortedCountries = Object.entries(countrySales).sort((a, b) => b[1] - a[1]);
     const tcDiv = document.getElementById('top-countries');
     tcDiv.innerHTML = '';
@@ -185,7 +205,6 @@ function renderSellersStats() {
         }
     });
 
-    // مرتب‌سازی فروشندگان بر اساس بیشترین فروش نهایی (تک + عمده)
     const sortedSellers = Object.entries(sellerData).sort((a, b) => {
         const totalVolA = a[1].retVol + a[1].whoVol;
         const totalVolB = b[1].retVol + b[1].whoVol;
@@ -230,15 +249,15 @@ function renderSellersStats() {
         </tr>`;
     });
 
-    // فراخوانی تابع تزریق نمودارها
     drawCharts(chartLabels, retChartData, whoChartData);
 }
 
 // ----------------------------------------------------
-// موتور هوشمند رسم نمودار و استایل‌دهی جدول
+// موتور هوشمند رسم نمودارها و تحلیل روند زمانی لوکس
 // ----------------------------------------------------
 let retailChartInstance = null;
 let wholesaleChartInstance = null;
+let trendChartInstance = null;
 
 function drawCharts(labels, retData, whoData) {
     const table = document.getElementById('sellers-stats-body').closest('table');
@@ -275,6 +294,43 @@ function drawCharts(labels, retData, whoData) {
         }
     }
 
+    // تزریق پویای باکس بزرگ نمودار خطی-میله‌ای روند سالانه و ماهانه گوگل ادز در انتهای صفحه
+    let trendContainer = document.getElementById('historical-trend-container');
+    if (!trendContainer) {
+        trendContainer = document.createElement('div');
+        trendContainer.id = 'historical-trend-container';
+        trendContainer.style.cssText = 'width: 100%; background: #fff; padding: 25px; border: 1px solid #eee; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-top: 30px; text-align: center;';
+        trendContainer.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; direction: rtl;">
+                <h4 style="color: #2c3e50; font-size: 16px; font-weight: bold; margin: 0;">📈 بنچمارک تحلیل روند کلان فروش و سود خالص (Google Ads Style)</h4>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <button id="trend-monthly-btn" class="btn btn-small btn-blue" style="padding: 6px 14px; font-size: 12px;"> نمای ماهانه</button>
+                    <button id="trend-yearly-btn" class="btn btn-small btn-gray" style="padding: 6px 14px; font-size: 12px; background-color: #7f8c8d;"> نمای سالانه</button>
+                </div>
+            </div>
+            <div style="position: relative; height: 340px; width: 100%;">
+                <canvas id="trend-linear-chart"></canvas>
+            </div>
+        `;
+        table.parentNode.appendChild(trendContainer);
+
+        document.getElementById('trend-monthly-btn').addEventListener('click', () => {
+            currentTrendView = 'monthly';
+            document.getElementById('trend-monthly-btn').className = "btn btn-small btn-blue";
+            document.getElementById('trend-yearly-btn').className = "btn btn-small btn-gray";
+            document.getElementById('trend-yearly-btn').style.backgroundColor = "#7f8c8d";
+            renderPieCharts(labels, retData, whoData); // رندرسازی مجدد
+        });
+
+        document.getElementById('trend-yearly-btn').addEventListener('click', () => {
+            currentTrendView = 'yearly';
+            document.getElementById('trend-yearly-btn').className = "btn btn-small btn-blue";
+            document.getElementById('trend-monthly-btn').className = "btn btn-small btn-gray";
+            document.getElementById('trend-monthly-btn').style.backgroundColor = "#7f8c8d";
+            renderPieCharts(labels, retData, whoData); // رندرسازی مجدد
+        });
+    }
+
     if (typeof Chart === 'undefined') {
         const script = document.createElement('script');
         script.src = "https://cdn.jsdelivr.net/npm/chart.js";
@@ -302,6 +358,97 @@ function renderPieCharts(labels, retData, whoData) {
         type: 'doughnut',
         data: { labels: labels, datasets: [{ data: whoData, backgroundColor: colors.slice(0, labels.length), borderWidth: 2 }] },
         options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { font: { family: 'Tahoma' } } } }, cutout: '65%' }
+    });
+
+    // 🔥 تحلیل تاریخی کلان تمام دوران و رندر نمودار میله‌ای-خطی دو محوره گوگل ادز 🔥
+    let trendGroups = {};
+    allInvoicesRaw.forEach(inv => {
+        if (inv.status !== 'نهایی') return;
+        let dateObj = inv.timestamp ? inv.timestamp.toDate() : null;
+        if (!dateObj) return;
+
+        let key = "";
+        if (currentTrendView === 'monthly') {
+            let month = String(dateObj.getMonth() + 1).padStart(2, '0');
+            key = `${dateObj.getFullYear()} / ${month}`;
+        } else {
+            key = `${dateObj.getFullYear()}`;
+        }
+
+        if (!trendGroups[key]) trendGroups[key] = { sales: 0, profit: 0 };
+        trendGroups[key].sales += convertToEuro(inv.grandTotal, inv.currency);
+        if (inv.isProfitCalculated && inv.netProfit !== undefined) {
+            trendGroups[key].profit += convertToEuro(inv.netProfit, inv.currency);
+        }
+    });
+
+    let sortedTimelineKeys = Object.keys(trendGroups).sort();
+    let salesTimelineData = [];
+    let profitTimelineData = [];
+
+    sortedTimelineKeys.forEach(k => {
+        salesTimelineData.push(trendGroups[k].sales.toFixed(2));
+        profitTimelineData.push(trendGroups[k].profit.toFixed(2));
+    });
+
+    const trendCtx = document.getElementById('trend-linear-chart').getContext('2d');
+    if (trendChartInstance) trendChartInstance.destroy();
+
+    trendChartInstance = new Chart(trendCtx, {
+        type: 'bar',
+        data: {
+            labels: sortedTimelineKeys,
+            datasets: [
+                {
+                    label: '🔵 مجموع حجم کل فروش (€)',
+                    data: salesTimelineData,
+                    backgroundColor: 'rgba(52, 152, 219, 0.7)',
+                    borderColor: '#3498db',
+                    borderWidth: 2,
+                    borderRadius: 5,
+                    yAxisID: 'y'
+                },
+                {
+                    label: '🟢 مجموع کل سود خالص (€)',
+                    data: profitTimelineData,
+                    backgroundColor: 'transparent',
+                    borderColor: '#2ecc71',
+                    borderWidth: 4,
+                    pointBackgroundColor: '#27ae60',
+                    pointRadius: 6,
+                    pointHoverRadius: 8,
+                    type: 'line',
+                    tension: 0.3,
+                    yAxisID: 'y1'
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: { grid: { display: false }, ticks: { font: { family: 'Tahoma', size: 11 } } },
+                y: {
+                    type: 'linear',
+                    display: true,
+                    position: 'right', // حجم فروش سمت راست فریم
+                    title: { display: true, text: 'حجم کل فروش (€)', font: { family: 'Tahoma', weight: 'bold' } },
+                    ticks: { font: { family: 'Tahoma' } }
+                },
+                y1: {
+                    type: 'linear',
+                    display: true,
+                    position: 'left', // سود خالص سمت چپ فریم
+                    grid: { drawOnChartArea: false },
+                    title: { display: true, text: 'سود خالص واقعی (€)', font: { family: 'Tahoma', weight: 'bold' } },
+                    ticks: { font: { family: 'Tahoma' } }
+                }
+            },
+            plugins: {
+                legend: { position: 'top', labels: { font: { family: 'Tahoma', weight: 'bold', size: 12 }, padding: 15 } },
+                tooltip: { bodyFont: { family: 'Tahoma' }, titleFont: { family: 'Tahoma' } }
+            }
+        }
     });
 }
 // ----------------------------------------------------
