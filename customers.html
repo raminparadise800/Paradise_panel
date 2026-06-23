@@ -8,19 +8,38 @@
     <style>
         body { background-color: #2c3e50; font-family: Tahoma, 'Segoe UI', sans-serif; opacity: 0; transition: opacity 0.3s ease;}
         .wrapper { max-width: 1100px; margin: 20px auto; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-        .search-box { display: flex; gap: 10px; margin-bottom: 30px; }
-        .search-box input { flex: 1; padding: 12px 15px; border: 2px solid #ddd; border-radius: 6px; font-size: 16px; outline: none; }
-        .search-box button { background-color: #3498db; color: white; border: none; padding: 0 25px; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        
+        /* بازنویسی باکس جستجو و مرتب‌سازی به صورت ریسپانسیو و مدرن */
+        .search-sort-container { display: flex; gap: 15px; margin-bottom: 30px; align-items: center; flex-wrap: wrap; }
+        .search-box-wrapper { flex: 1; min-width: 250px; }
+        .search-box-wrapper input { width: 100%; padding: 12px 15px; border: 2px solid #ddd; border-radius: 6px; font-size: 16px; outline: none; box-sizing: border-box; }
+        .search-box-wrapper input:focus { border-color: #3498db; }
+        
+        .sort-box-wrapper { display: flex; align-items: center; gap: 8px; }
+        .sort-box-wrapper select { padding: 11px 15px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; background: #fff; outline: none; cursor: pointer; font-family: Tahoma, sans-serif; font-weight: bold; color: #2c3e50; }
+        .sort-box-wrapper select:focus { border-color: #3498db; }
+
         .profile-header { background: #f8f9fa; padding: 20px; border-radius: 8px; border: 1px solid #eee; margin-bottom: 20px; }
         .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 30px; }
         .stat-card { background: #fff; border: 1px solid #e0e0e0; padding: 15px; border-radius: 8px; text-align: center; }
         .stat-card h4 { color: #7f8c8d; font-size: 13px; margin-bottom: 10px; }
         .stat-card span { display: block; font-size: 20px; font-weight: bold; color: #2c3e50; }
+        
         .history-table { width: 100%; border-collapse: collapse; text-align: right; }
         .history-table th, .history-table td { padding: 12px; border-bottom: 1px solid #eee; font-size: 14px; }
-        .history-table th { background-color: #2c3e50; color: white; position: sticky; top: 0;}
+        .history-table th { background-color: #2c3e50; color: white; position: sticky; top: 0; font-weight: bold;}
         .history-table tr:hover { background-color: #f1f2f6; }
-        /* کلاس مخصوص ادمین برای نمایش/مخفی کردن */
+        
+        /* استایل‌های اختصاصی ارتقای جدید سیستم تجاری */
+        .phone-highlight-green { color: #27ae60 !important; font-weight: bold; font-family: Arial, sans-serif; }
+        .phone-normal { font-family: Arial, sans-serif; color: #555; }
+        
+        .badge { display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: bold; text-align: center; }
+        .badge-success { background-color: #e8f8f5; color: #27ae60; border: 1px solid #27ae60; }
+        .badge-secondary { background-color: #f2f4f4; color: #7f8c8d; border: 1px solid #bdc3c7; }
+        
+        .total-spent-cell { font-weight: bold; color: #2980b9; font-family: 'Segoe UI', Tahoma, sans-serif; }
+
         .admin-only { display: none; } 
     </style>
 </head>
@@ -32,24 +51,35 @@
     </div>
 
     <div class="wrapper">
-        <h2 style="color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 20px;">👤 لیست مشتریان و سوابق</h2>
+        <h2 style="color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 20px;">👤 لیست مشتریان و ارزش سوابق تجاری</h2>
         
-        <div class="search-box">
-            <input type="text" id="search-input" placeholder="جستجو در لیست مشتریان (نام یا شماره تلفن)...">
+        <div class="search-sort-container">
+            <div class="search-box-wrapper">
+                <input type="text" id="search-input" placeholder="جستجو در لیست مشتریان (نام، شماره تماس یا کشور)...">
+            </div>
+            <div class="sort-box-wrapper">
+                <label style="font-weight: bold; color: #2c3e50; font-size: 14px;">📊 مرتب‌سازی:</label>
+                <select id="sort-select">
+                    <option value="default">پیش‌فرض (آخرین تعامل)</option>
+                    <option value="spent-high">💰 بیشترین میزان خرید (👑 مشتریان ویژه)</option>
+                    <option value="spent-low">📉 کمترین میزان خرید</option>
+                    <option value="name-asc">🔤 نام مشتری (الف تا ی)</option>
+                </select>
+            </div>
         </div>
 
-        <div id="all-customers-view" style="overflow-y: auto; max-height: 500px;">
+        <div id="all-customers-view" style="overflow-y: auto; max-height: 550px; border: 1px solid #eee; border-radius: 6px;">
             <table class="history-table">
                 <thead>
                     <tr>
                         <th>نام مشتری</th>
                         <th>شماره تماس</th>
                         <th>کشور</th>
-                        <th style="text-align:center;">عملیات</th>
+                        <th>مجموع خرید نهایی</th> <th style="text-align:center;">وضعیت خرید</th> <th style="text-align:center;">عملیات</th>
                     </tr>
                 </thead>
                 <tbody id="all-customers-body">
-                    <tr><td colspan="4" style="text-align:center;">در حال بارگذاری مشتریان...</td></tr>
+                    <tr><td colspan="6" style="text-align:center; padding: 30px;">در حال بارگذاری هوشمند اطلاعات مشتریان... ⏳</td></tr>
                 </tbody>
             </table>
         </div>
@@ -86,7 +116,8 @@
                             <th>وضعیت</th>
                             <th>فروشنده</th>
                             <th>مبلغ پرداخت مشتری</th>
-                            <th class="admin-only" style="color:#f1c40f;">سود خالص (مدیر)</th> <th style="text-align:center;">عملیات</th>
+                            <th class="admin-only" style="color:#f1c40f;">سود خالص (مدیر)</th> 
+                            <th style="text-align:center;">عملیات</th>
                         </tr>
                     </thead>
                     <tbody id="customer-invoices"></tbody>
