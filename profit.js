@@ -6,12 +6,12 @@ import { collection, getDocs, doc, updateDoc, query, where } from "https://www.g
 // 🔴🔴🔴 ایمیل مدیریت
 const ADMIN_EMAIL = "ramin.paradise800@gmail.com"; 
 
-let allFinalInvoices = [];
-let filteredInvoices = [];
+let allInvoicesRaw = []; // تمام فاکتورها برای محاسبه نرخ تبدیل
+let filteredAllInvoices = []; 
+let filteredFinalInvoices = []; // فقط فاکتورهای نهایی برای محاسبه سود و حجم
 let currentCalcFilter = 'pending'; 
 
 let exchangeRates = null;
-// 🔥 لیر (TRY) برای محاسبات کلان اضافه شد 🔥
 const currencyCodes = { "€": "EUR", "£": "GBP", "$": "USD", "₺": "TRY" };
 
 const tabBtns = document.querySelectorAll('.tab-btn');
@@ -69,14 +69,13 @@ document.getElementById('filter-completed').addEventListener('click', () => { cu
 
 async function loadData() {
     try {
-        allFinalInvoices = [];
-        const qRetail = query(collection(db, "Retail_Invoices"), where("status", "==", "نهایی"));
-        const retSnap = await getDocs(qRetail);
-        retSnap.forEach(doc => allFinalInvoices.push({ id: doc.id, collectionName: "Retail_Invoices", ...doc.data() }));
+        allInvoicesRaw = [];
+        // دریافت تمام فاکتورها (چه اولیه و چه نهایی) برای محاسبه قدرت فروشندگان
+        const retSnap = await getDocs(collection(db, "Retail_Invoices"));
+        retSnap.forEach(doc => allInvoicesRaw.push({ id: doc.id, collectionName: "Retail_Invoices", ...doc.data() }));
 
-        const qWholesale = query(collection(db, "Wholesale_Invoices"), where("status", "==", "نهایی"));
-        const whoSnap = await getDocs(qWholesale);
-        whoSnap.forEach(doc => allFinalInvoices.push({ id: doc.id, collectionName: "Wholesale_Invoices", ...doc.data() }));
+        const whoSnap = await getDocs(collection(db, "Wholesale_Invoices"));
+        whoSnap.forEach(doc => allInvoicesRaw.push({ id: doc.id, collectionName: "Wholesale_Invoices", ...doc.data() }));
 
         applyDateFilter(); 
     } catch (e) { console.error(e); alert("خطا در بارگذاری اطلاعات"); }
@@ -101,11 +100,14 @@ function applyDateFilter() {
         }
     }
 
-    filteredInvoices = allFinalInvoices.filter(inv => {
+    filteredAllInvoices = allInvoicesRaw.filter(inv => {
         if (!inv.timestamp) return true;
         const invDate = inv.timestamp.toDate();
         return invDate >= startDate && invDate <= endDate;
     });
+
+    // جداسازی فاکتورهای نهایی برای باکس‌های مالی
+    filteredFinalInvoices = filteredAllInvoices.filter(inv => inv.status === 'نهایی');
 
     updateDashboard();
     renderCalculator();
@@ -122,7 +124,7 @@ function updateDashboard() {
     let retVol = 0, whoVol = 0, retProf = 0, whoProf = 0;
     let countrySales = {};
 
-    filteredInvoices.forEach(inv => {
+    filteredFinalInvoices.forEach(inv => {
         if (!inv.isProfitCalculated) return;
 
         const grandTotalEUR = convertToEuro(inv.grandTotal, inv.currency);
@@ -160,38 +162,160 @@ function updateDashboard() {
 function renderSellersStats() {
     let sellerData = {};
     
-    filteredInvoices.forEach(inv => {
-        if (!inv.isProfitCalculated) return;
-
+    filteredAllInvoices.forEach(inv => {
         const seller = inv.salespersonName || 'نامشخص';
-        if (!sellerData[seller]) sellerData[seller] = { ret: 0, who: 0, prof: 0 };
+        if (!sellerData[seller]) {
+            sellerData[seller] = { totalInvs: 0, finalInvs: 0, retVol: 0, whoVol: 0, retProf: 0, whoProf: 0 };
+        }
         
-        const grandTotalEUR = convertToEuro(inv.grandTotal, inv.currency);
-        const netProfitEUR = convertToEuro(inv.netProfit || 0, inv.currency);
+        sellerData[seller].totalInvs++;
 
-        if (inv.invoiceType === 'retail') sellerData[seller].ret += grandTotalEUR;
-        else sellerData[seller].who += grandTotalEUR;
-        
-        sellerData[seller].prof += netProfitEUR;
+        if (inv.status === 'نهایی') {
+            sellerData[seller].finalInvs++;
+            const grandTotalEUR = convertToEuro(inv.grandTotal, inv.currency);
+            const netProfitEUR = convertToEuro(inv.netProfit || 0, inv.currency);
+
+            if (inv.invoiceType === 'retail') {
+                sellerData[seller].retVol += grandTotalEUR;
+                if (inv.isProfitCalculated) sellerData[seller].retProf += netProfitEUR;
+            } else {
+                sellerData[seller].whoVol += grandTotalEUR;
+                if (inv.isProfitCalculated) sellerData[seller].whoProf += netProfitEUR;
+            }
+        }
+    });
+
+    // مرتب‌سازی فروشندگان بر اساس بیشترین فروش نهایی (تک + عمده)
+    const sortedSellers = Object.entries(sellerData).sort((a, b) => {
+        const totalVolA = a[1].retVol + a[1].whoVol;
+        const totalVolB = b[1].retVol + b[1].whoVol;
+        return totalVolB - totalVolA;
     });
 
     const tbody = document.getElementById('sellers-stats-body');
     tbody.innerHTML = '';
-    for (const [name, stats] of Object.entries(sellerData)) {
+    
+    let chartLabels = [];
+    let retChartData = [];
+    let whoChartData = [];
+
+    sortedSellers.forEach(([name, stats]) => {
+        const totalVol = stats.retVol + stats.whoVol;
+        const conversionRate = stats.totalInvs > 0 ? ((stats.finalInvs / stats.totalInvs) * 100).toFixed(1) : 0;
+        
+        if (totalVol > 0) {
+            chartLabels.push(name);
+            retChartData.push(stats.retVol);
+            whoChartData.push(stats.whoVol);
+        }
+
         tbody.innerHTML += `<tr>
-            <td style="font-weight:bold;">${name}</td>
-            <td style="color:#2980b9;">~ ${stats.ret.toFixed(2)} €</td>
-            <td style="color:#8e44ad;">~ ${stats.who.toFixed(2)} €</td>
-            <td style="color:#27ae60; font-weight:bold;">~ ${stats.prof.toFixed(2)} €</td>
+            <td style="font-weight:bold; color:#2c3e50; font-size:15px;">
+                ${name}<br>
+                <span style="font-size:11px; color:#7f8c8d; font-weight:normal;">مجموع فروش: ${totalVol.toFixed(2)} €</span>
+            </td>
+            <td style="text-align:center;">
+                <span style="display:block; font-weight:bold; color:#34495e;">${stats.totalInvs} پیش‌فاکتور</span>
+                <span style="display:block; color:#27ae60; font-size:12px; margin-bottom:6px;">${stats.finalInvs} نهایی</span>
+                <span style="background:${conversionRate >= 50 ? '#d5f5e3' : '#fdedec'}; color:${conversionRate >= 50 ? '#27ae60' : '#e74c3c'}; padding:3px 8px; border-radius:4px; font-size:12px; font-weight:bold;">نرخ تبدیل: ${conversionRate}%</span>
+            </td>
+            <td style="font-size:13px; line-height:1.8;">
+                تک: <span style="color:#2980b9; font-weight:bold;">${stats.retVol.toFixed(2)} €</span><br>
+                عمده: <span style="color:#8e44ad; font-weight:bold;">${stats.whoVol.toFixed(2)} €</span>
+            </td>
+            <td style="font-size:13px; line-height:1.8;">
+                تک: <span style="color:#27ae60; font-weight:bold;">${stats.retProf.toFixed(2)} €</span><br>
+                عمده: <span style="color:#27ae60; font-weight:bold;">${stats.whoProf.toFixed(2)} €</span>
+            </td>
         </tr>`;
+    });
+
+    // فراخوانی تابع تزریق نمودارها
+    drawCharts(chartLabels, retChartData, whoChartData);
+}
+
+// ----------------------------------------------------
+// موتور هوشمند رسم نمودار و استایل‌دهی جدول (بدون نیاز به HTML)
+// ----------------------------------------------------
+let retailChartInstance = null;
+let wholesaleChartInstance = null;
+
+function drawCharts(labels, retData, whoData) {
+    const table = document.getElementById('sellers-stats-body').closest('table');
+    let chartsContainer = document.getElementById('sellers-charts-container');
+    
+    // اگر کانتینر نمودارها وجود نداشت، آن را دقیقاً بالای جدول خلق می‌کنیم
+    if (!chartsContainer) {
+        chartsContainer = document.createElement('div');
+        chartsContainer.id = 'sellers-charts-container';
+        chartsContainer.style.display = 'flex';
+        chartsContainer.style.flexWrap = 'wrap';
+        chartsContainer.style.gap = '20px';
+        chartsContainer.style.marginBottom = '25px';
+        chartsContainer.style.justifyContent = 'center';
+        chartsContainer.innerHTML = `
+            <div style="flex:1; min-width:280px; max-width:400px; background:#fff; padding:20px; border:1px solid #eee; border-radius:12px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); text-align:center;">
+                <h4 style="color:#2980b9; margin-bottom:15px; font-size:15px; font-weight:bold;">📊 سهم فروش تک‌فروشی</h4>
+                <canvas id="retail-pie-chart"></canvas>
+            </div>
+            <div style="flex:1; min-width:280px; max-width:400px; background:#fff; padding:20px; border:1px solid #eee; border-radius:12px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); text-align:center;">
+                <h4 style="color:#8e44ad; margin-bottom:15px; font-size:15px; font-weight:bold;">📊 سهم فروش عمده‌فروشی</h4>
+                <canvas id="wholesale-pie-chart"></canvas>
+            </div>
+        `;
+        table.parentNode.insertBefore(chartsContainer, table);
+        
+        // تغییر مدرن سرستون‌های جدول (با تزریق CSS)
+        const thead = table.querySelector('thead tr');
+        if(thead) {
+            thead.innerHTML = `
+                <th style="width:25%; background:#2c3e50; color:white; padding:12px; text-align:center; border-radius: 0 8px 0 0;">نام فروشنده</th>
+                <th style="width:25%; background:#2c3e50; color:white; padding:12px; text-align:center;">عملکرد و نرخ تبدیل</th>
+                <th style="width:25%; background:#2c3e50; color:white; padding:12px; text-align:center;">حجم فروش (یورو)</th>
+                <th style="width:25%; background:#2c3e50; color:white; padding:12px; text-align:center; border-radius: 8px 0 0 0;">سودآوری خالص</th>
+            `;
+        }
+    }
+
+    // دانلود کتابخانه Chart.js به صورت هوشمند
+    if (typeof Chart === 'undefined') {
+        const script = document.createElement('script');
+        script.src = "https://cdn.jsdelivr.net/npm/chart.js";
+        script.onload = () => renderPieCharts(labels, retData, whoData);
+        document.head.appendChild(script);
+    } else {
+        renderPieCharts(labels, retData, whoData);
     }
 }
+
+function renderPieCharts(labels, retData, whoData) {
+    const retCtx = document.getElementById('retail-pie-chart').getContext('2d');
+    const whoCtx = document.getElementById('wholesale-pie-chart').getContext('2d');
+    const colors = ['#3498db', '#e74c3c', '#2ecc71', '#f1c40f', '#9b59b6', '#e67e22', '#1abc9c', '#34495e', '#d35400', '#7f8c8d'];
+
+    // نمودار لوکس تک‌فروشی
+    if (retailChartInstance) retailChartInstance.destroy();
+    retailChartInstance = new Chart(retCtx, {
+        type: 'doughnut',
+        data: { labels: labels, datasets: [{ data: retData, backgroundColor: colors.slice(0, labels.length), borderWidth: 2 }] },
+        options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { font: { family: 'Tahoma' } } } }, cutout: '65%' }
+    });
+
+    // نمودار لوکس عمده‌فروشی
+    if (wholesaleChartInstance) wholesaleChartInstance.destroy();
+    wholesaleChartInstance = new Chart(whoCtx, {
+        type: 'doughnut',
+        data: { labels: labels, datasets: [{ data: whoData, backgroundColor: colors.slice(0, labels.length), borderWidth: 2 }] },
+        options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { font: { family: 'Tahoma' } } } }, cutout: '65%' }
+    });
+}
+// ----------------------------------------------------
 
 function renderCalculator() {
     const calcList = document.getElementById('calculator-list');
     calcList.innerHTML = '';
 
-    const listToShow = filteredInvoices.filter(inv => {
+    const listToShow = filteredFinalInvoices.filter(inv => {
         const isCalculated = inv.isProfitCalculated === true;
         return currentCalcFilter === 'pending' ? !isCalculated : isCalculated;
     });
@@ -204,154 +328,4 @@ function renderCalculator() {
     listToShow.forEach(inv => {
         const div = document.createElement('div');
         div.className = 'inv-card';
-        const dateStr = inv.timestamp ? new Date(inv.timestamp.toDate()).toLocaleDateString('en-GB') : '-';
-        const shippingCharged = parseFloat(inv.shippingCost) || 0;
-        const discount = parseFloat(inv.discount) || 0;
-        const sellerName = inv.salespersonName || 'نامشخص'; 
-        
-        let itemsHTML = '';
-        (inv.items || []).forEach((item, idx) => {
-            const cost = item.costPrice || 0;
-            itemsHTML += `<tr>
-                <td style="text-align:left;">${item.name}</td>
-                <td>${item.qty}</td>
-                <td>${item.price} ${inv.currency}</td>
-                <td><input type="number" class="item-cost-input" data-idx="${idx}" value="${cost}" step="0.01" placeholder="خرید تکی"> ${inv.currency}</td>
-            </tr>`;
-        });
-
-        div.innerHTML = `
-            <div class="inv-header">
-                <div>
-                    <span style="font-size:18px; font-weight:bold;">${inv.invoiceNumber}</span>
-                    <span style="margin-right:15px; font-size:12px; background:#f1c40f; color:#000; padding:3px 8px; border-radius:4px;">${inv.invoiceType === 'retail' ? 'تک فروشی' : 'عمده فروشی'}</span>
-                </div>
-                <div style="font-size:14px;">
-                    مشتری: ${inv.customerName} | 
-                    <span style="color: #a29bfe; font-weight: bold; margin: 0 5px;">👤 فروشنده: ${sellerName}</span> | 
-                    مبلغ کل فاکتور: <span style="color:#f1c40f; font-weight:bold;">${inv.grandTotal} ${inv.currency}</span>
-                </div>
-            </div>
-            <div class="inv-body">
-                <table class="items-table">
-                    <thead style="background:#ecf0f1;"><tr><th style="text-align:left;">محصول</th><th>تعداد</th><th>فروش (تکی)</th><th>خرید (تکی)</th></tr></thead>
-                    <tbody>${itemsHTML}</tbody>
-                </table>
-                <div style="background:#fff; padding:15px; border:1px solid #ddd; border-radius:4px;">
-                    
-                    <div style="display:flex; justify-content:space-between; flex-wrap: wrap; gap: 15px; margin-bottom: 15px; border-bottom: 1px dashed #ccc; padding-bottom: 15px;">
-                        <div style="flex:1;">
-                            <div style="margin-bottom: 8px; font-size: 14px; color: #2980b9; font-weight: bold;">
-                                📦 دریافتی از مشتری بابت ارسال در فاکتور: ${shippingCharged} ${inv.currency}
-                            </div>
-                            <label style="font-weight:bold; color: #2c3e50;">🚚 پرداختی واقعی شما بابت ارسال/کارگو:</label>
-                            <br>
-                            <input type="number" id="actual-ship-${inv.id}" class="live-calc-input" value="${inv.actualShippingCost || 0}" step="0.01" style="width:120px; padding:8px; margin-top:5px; border: 1px solid #ccc; border-radius: 4px;"> ${inv.currency}
-                        </div>
-                        <div style="flex:1; background: #f8f9fa; padding: 15px; border-radius: 6px; text-align: right; font-size: 14px;">
-                            <p style="margin-bottom:5px;">🛒 سود کالاها: <span id="items-profit-${inv.id}" style="font-weight:bold;">0.00</span> ${inv.currency}</p>
-                            <p style="margin-bottom:5px;">📦 سود/زیان ارسال: <span id="shipping-profit-${inv.id}" style="font-weight:bold;">0.00</span> ${inv.currency}</p>
-                            <p style="color:#e74c3c; margin-bottom:0;">📉 تخفیف فاکتور: ${discount} ${inv.currency}</p>
-                        </div>
-                    </div>
-
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <span style="font-weight:bold; font-size:18px;">سود خالص نهایی: <span id="profit-display-${inv.id}">${inv.netProfit ? inv.netProfit.toFixed(2) : '0.00'}</span> ${inv.currency}</span>
-                        <button class="btn-success save-profit-btn" data-id="${inv.id}" data-col="${inv.collectionName}" style="padding:10px 20px; border:none; border-radius:4px; cursor:pointer;">💾 تایید و ذخیره سود</button>
-                    </div>
-                </div>
-            </div>
-        `;
-        calcList.appendChild(div);
-
-        const updateLiveCalc = () => {
-            let totalSalesGoods = 0;
-            let totalCostGoods = 0;
-            
-            div.querySelectorAll('.item-cost-input').forEach((input, idx) => {
-                const cost = parseFloat(input.value) || 0;
-                const qty = parseFloat(inv.items[idx].qty) || 0;
-                const price = parseFloat(inv.items[idx].price) || 0;
-                totalSalesGoods += (price * qty);
-                totalCostGoods += (cost * qty);
-            });
-            
-            const actualShip = parseFloat(document.getElementById(`actual-ship-${inv.id}`).value) || 0;
-            
-            const itemsProfit = totalSalesGoods - totalCostGoods;
-            const shippingProfit = shippingCharged - actualShip;
-            const netProfit = itemsProfit + shippingProfit - discount; 
-
-            document.getElementById(`items-profit-${inv.id}`).textContent = itemsProfit.toFixed(2);
-            
-            const shipProfEl = document.getElementById(`shipping-profit-${inv.id}`);
-            shipProfEl.textContent = shippingProfit.toFixed(2);
-            shipProfEl.style.color = shippingProfit < 0 ? '#e74c3c' : '#27ae60'; 
-            
-            const netProfEl = document.getElementById(`profit-display-${inv.id}`);
-            netProfEl.textContent = netProfit.toFixed(2);
-            netProfEl.style.color = netProfit < 0 ? '#e74c3c' : '#27ae60';
-        };
-
-        div.querySelectorAll('.item-cost-input, .live-calc-input').forEach(inp => {
-            inp.addEventListener('input', updateLiveCalc);
-        });
-        
-        updateLiveCalc(); 
-
-        const saveBtn = div.querySelector('.save-profit-btn');
-        saveBtn.addEventListener('click', async () => {
-            saveBtn.textContent = "⏳...";
-            saveBtn.disabled = true;
-
-            const updatedItems = [...inv.items];
-            let totalCostOfGoods = 0;
-            
-            div.querySelectorAll('.item-cost-input').forEach(input => {
-                const idx = input.dataset.idx;
-                const cost = parseFloat(input.value) || 0;
-                updatedItems[idx].costPrice = cost;
-                totalCostOfGoods += (cost * updatedItems[idx].qty); 
-            });
-
-            const actualShip = parseFloat(document.getElementById(`actual-ship-${inv.id}`).value) || 0;
-            const netProfit = inv.grandTotal - (totalCostOfGoods + actualShip);
-
-            try {
-                await updateDoc(doc(db, inv.collectionName, inv.id), {
-                    items: updatedItems,
-                    actualShippingCost: actualShip,
-                    costOfGoods: totalCostOfGoods,
-                    netProfit: netProfit,
-                    isProfitCalculated: true
-                });
-
-                saveBtn.textContent = "✔️ ذخیره شد";
-                
-                const invIndex = allFinalInvoices.findIndex(i => i.id === inv.id);
-                if (invIndex > -1) {
-                    allFinalInvoices[invIndex].items = updatedItems;
-                    allFinalInvoices[invIndex].actualShippingCost = actualShip;
-                    allFinalInvoices[invIndex].netProfit = netProfit;
-                    allFinalInvoices[invIndex].isProfitCalculated = true;
-                }
-                
-                applyDateFilter(); 
-
-                setTimeout(() => {
-                    if (currentCalcFilter === 'pending') {
-                        div.style.display = 'none';
-                    } else {
-                        saveBtn.textContent = "💾 تایید و ذخیره سود";
-                        saveBtn.disabled = false;
-                    }
-                }, 1000);
-
-            } catch (e) {
-                alert("خطا در ذخیره اطلاعات.");
-                saveBtn.disabled = false;
-                saveBtn.textContent = "💾 تایید و ذخیره سود";
-            }
-        });
-    });
-}
+        const dateStr = inv.timestamp
