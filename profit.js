@@ -6,11 +6,11 @@ import { collection, getDocs, doc, updateDoc, query, where } from "https://www.g
 // 🔴🔴🔴 ایمیل مدیریت
 const ADMIN_EMAIL = "ramin.paradise800@gmail.com"; 
 
-let allInvoicesRaw = []; // تمام فاکتورها برای محاسبه نرخ تبدیل و روند زمانی
+let allInvoicesRaw = []; 
 let filteredAllInvoices = []; 
-let filteredFinalInvoices = []; // فقط فاکتورهای نهایی برای محاسبه سود و حجم در بازه فیلتر
+let filteredFinalInvoices = []; 
 let currentCalcFilter = 'pending'; 
-let currentTrendView = 'monthly'; // وضعیت پیش‌فرض نمودار روند زمان
+let currentTrendView = 'monthly'; 
 
 let exchangeRates = null;
 const currencyCodes = { "€": "EUR", "£": "GBP", "$": "USD", "₺": "TRY" };
@@ -147,7 +147,7 @@ function updateDashboard() {
     document.getElementById('dash-retail-profit').textContent = `${retProf.toFixed(2)} €`;
     document.getElementById('dash-wholesale-profit').textContent = `${whoProf.toFixed(2)} €`;
 
-    // 🔥 تزریق پویای کارت مجموع کل سود خالص سیستم 🔥
+    // ساخت کارت مجموع سود نهایی
     const totalNetProfitEUR = retProf + whoProf;
     let totalProfitCard = document.getElementById('dash-total-net-profit');
     if (!totalProfitCard) {
@@ -177,7 +177,166 @@ function updateDashboard() {
             <span style="color:#2980b9; font-weight:bold;">~ ${amount.toFixed(2)} €</span>
         </div>`;
     });
+
+    // احضار نمودار روند گوگل ادز برای بخش داشبورد کلان
+    drawTrendChart();
 }
+
+// ----------------------------------------------------
+// نمودار روند زمانی (گوگل ادز) - مخصوص داشبورد کلان
+// ----------------------------------------------------
+let trendChartInstance = null;
+
+function drawTrendChart() {
+    const topCountriesEl = document.getElementById('top-countries');
+    if (!topCountriesEl) return;
+    
+    // پیدا کردن تبِ داشبورد کلان برای الصاق نمودار در انتهای آن
+    const dashboardTab = topCountriesEl.closest('.tab-content') || topCountriesEl.parentElement.parentElement;
+    
+    let trendContainer = document.getElementById('historical-trend-container');
+    if (!trendContainer) {
+        trendContainer = document.createElement('div');
+        trendContainer.id = 'historical-trend-container';
+        trendContainer.style.cssText = 'width: 100%; background: #fff; padding: 25px; border: 1px solid #eee; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-top: 30px; text-align: center;';
+        trendContainer.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; direction: rtl;">
+                <h4 style="color: #2c3e50; font-size: 16px; font-weight: bold; margin: 0;">📈 بنچمارک تحلیل روند کلان فروش و سود خالص (Google Ads Style)</h4>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <button id="trend-monthly-btn" class="btn btn-small btn-blue" style="padding: 6px 14px; font-size: 12px;"> نمای ماهانه</button>
+                    <button id="trend-yearly-btn" class="btn btn-small btn-gray" style="padding: 6px 14px; font-size: 12px; background-color: #7f8c8d;"> نمای سالانه</button>
+                </div>
+            </div>
+            <div style="position: relative; height: 340px; width: 100%;">
+                <canvas id="trend-linear-chart"></canvas>
+            </div>
+        `;
+        dashboardTab.appendChild(trendContainer);
+
+        document.getElementById('trend-monthly-btn').addEventListener('click', () => {
+            currentTrendView = 'monthly';
+            document.getElementById('trend-monthly-btn').className = "btn btn-small btn-blue";
+            document.getElementById('trend-yearly-btn').className = "btn btn-small btn-gray";
+            document.getElementById('trend-yearly-btn').style.backgroundColor = "#7f8c8d";
+            drawTrendChart(); 
+        });
+
+        document.getElementById('trend-yearly-btn').addEventListener('click', () => {
+            currentTrendView = 'yearly';
+            document.getElementById('trend-yearly-btn').className = "btn btn-small btn-blue";
+            document.getElementById('trend-monthly-btn').className = "btn btn-small btn-gray";
+            document.getElementById('trend-monthly-btn').style.backgroundColor = "#7f8c8d";
+            drawTrendChart(); 
+        });
+    }
+
+    let trendGroups = {};
+    allInvoicesRaw.forEach(inv => {
+        if (inv.status !== 'نهایی') return;
+        let dateObj = inv.timestamp ? inv.timestamp.toDate() : null;
+        if (!dateObj) return;
+
+        let key = "";
+        if (currentTrendView === 'monthly') {
+            let month = String(dateObj.getMonth() + 1).padStart(2, '0');
+            key = `${dateObj.getFullYear()} / ${month}`;
+        } else {
+            key = `${dateObj.getFullYear()}`;
+        }
+
+        if (!trendGroups[key]) trendGroups[key] = { sales: 0, profit: 0 };
+        trendGroups[key].sales += convertToEuro(inv.grandTotal, inv.currency);
+        if (inv.isProfitCalculated && inv.netProfit !== undefined) {
+            trendGroups[key].profit += convertToEuro(inv.netProfit, inv.currency);
+        }
+    });
+
+    let sortedTimelineKeys = Object.keys(trendGroups).sort();
+    let salesTimelineData = [];
+    let profitTimelineData = [];
+
+    sortedTimelineKeys.forEach(k => {
+        salesTimelineData.push(trendGroups[k].sales.toFixed(2));
+        profitTimelineData.push(trendGroups[k].profit.toFixed(2));
+    });
+
+    if (typeof Chart === 'undefined') {
+        const script = document.createElement('script');
+        script.src = "https://cdn.jsdelivr.net/npm/chart.js";
+        script.onload = () => renderTrendChartCanvas(sortedTimelineKeys, salesTimelineData, profitTimelineData);
+        document.head.appendChild(script);
+    } else {
+        renderTrendChartCanvas(sortedTimelineKeys, salesTimelineData, profitTimelineData);
+    }
+}
+
+function renderTrendChartCanvas(labels, salesData, profitData) {
+    const trendCtx = document.getElementById('trend-linear-chart').getContext('2d');
+    if (trendChartInstance) trendChartInstance.destroy();
+
+    trendChartInstance = new Chart(trendCtx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: '🔵 مجموع حجم کل فروش (€)',
+                    data: salesData,
+                    backgroundColor: 'rgba(52, 152, 219, 0.7)',
+                    borderColor: '#3498db',
+                    borderWidth: 2,
+                    borderRadius: 5,
+                    yAxisID: 'y'
+                },
+                {
+                    label: '🟢 مجموع کل سود خالص (€)',
+                    data: profitData,
+                    backgroundColor: 'transparent',
+                    borderColor: '#2ecc71',
+                    borderWidth: 4,
+                    pointBackgroundColor: '#27ae60',
+                    pointRadius: 6,
+                    pointHoverRadius: 8,
+                    type: 'line',
+                    tension: 0.3,
+                    yAxisID: 'y1'
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: { grid: { display: false }, ticks: { font: { family: 'Tahoma', size: 11 } } },
+                y: {
+                    type: 'linear',
+                    display: true,
+                    position: 'right',
+                    title: { display: true, text: 'حجم کل فروش (€)', font: { family: 'Tahoma', weight: 'bold' } },
+                    ticks: { font: { family: 'Tahoma' } }
+                },
+                y1: {
+                    type: 'linear',
+                    display: true,
+                    position: 'left',
+                    grid: { drawOnChartArea: false },
+                    title: { display: true, text: 'سود خالص واقعی (€)', font: { family: 'Tahoma', weight: 'bold' } },
+                    ticks: { font: { family: 'Tahoma' } }
+                }
+            },
+            plugins: {
+                legend: { position: 'top', labels: { font: { family: 'Tahoma', weight: 'bold', size: 12 }, padding: 15 } },
+                tooltip: { bodyFont: { family: 'Tahoma' }, titleFont: { family: 'Tahoma' } }
+            }
+        }
+    });
+}
+
+// ----------------------------------------------------
+// نمودارهای دایره‌ای و جدول آمار فروشندگان
+// ----------------------------------------------------
+let retailPieInstance = null;
+let wholesalePieInstance = null;
 
 function renderSellersStats() {
     let sellerData = {};
@@ -249,23 +408,16 @@ function renderSellersStats() {
         </tr>`;
     });
 
-    drawCharts(chartLabels, retChartData, whoChartData);
+    drawSellersPieCharts(chartLabels, retChartData, whoChartData);
 }
 
-// ----------------------------------------------------
-// موتور هوشمند رسم نمودارها و تحلیل روند زمانی لوکس
-// ----------------------------------------------------
-let retailChartInstance = null;
-let wholesaleChartInstance = null;
-let trendChartInstance = null;
-
-function drawCharts(labels, retData, whoData) {
+function drawSellersPieCharts(labels, retData, whoData) {
     const table = document.getElementById('sellers-stats-body').closest('table');
-    let chartsContainer = document.getElementById('sellers-charts-container');
+    let chartsContainer = document.getElementById('sellers-pie-charts-container');
     
     if (!chartsContainer) {
         chartsContainer = document.createElement('div');
-        chartsContainer.id = 'sellers-charts-container';
+        chartsContainer.id = 'sellers-pie-charts-container';
         chartsContainer.style.display = 'flex';
         chartsContainer.style.flexWrap = 'wrap';
         chartsContainer.style.gap = '20px';
@@ -294,163 +446,36 @@ function drawCharts(labels, retData, whoData) {
         }
     }
 
-    // تزریق پویای باکس بزرگ نمودار خطی-میله‌ای روند سالانه و ماهانه گوگل ادز در انتهای صفحه
-    let trendContainer = document.getElementById('historical-trend-container');
-    if (!trendContainer) {
-        trendContainer = document.createElement('div');
-        trendContainer.id = 'historical-trend-container';
-        trendContainer.style.cssText = 'width: 100%; background: #fff; padding: 25px; border: 1px solid #eee; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-top: 30px; text-align: center;';
-        trendContainer.innerHTML = `
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; direction: rtl;">
-                <h4 style="color: #2c3e50; font-size: 16px; font-weight: bold; margin: 0;">📈 بنچمارک تحلیل روند کلان فروش و سود خالص (Google Ads Style)</h4>
-                <div style="display: flex; gap: 8px; align-items: center;">
-                    <button id="trend-monthly-btn" class="btn btn-small btn-blue" style="padding: 6px 14px; font-size: 12px;"> نمای ماهانه</button>
-                    <button id="trend-yearly-btn" class="btn btn-small btn-gray" style="padding: 6px 14px; font-size: 12px; background-color: #7f8c8d;"> نمای سالانه</button>
-                </div>
-            </div>
-            <div style="position: relative; height: 340px; width: 100%;">
-                <canvas id="trend-linear-chart"></canvas>
-            </div>
-        `;
-        table.parentNode.appendChild(trendContainer);
-
-        document.getElementById('trend-monthly-btn').addEventListener('click', () => {
-            currentTrendView = 'monthly';
-            document.getElementById('trend-monthly-btn').className = "btn btn-small btn-blue";
-            document.getElementById('trend-yearly-btn').className = "btn btn-small btn-gray";
-            document.getElementById('trend-yearly-btn').style.backgroundColor = "#7f8c8d";
-            renderPieCharts(labels, retData, whoData); // رندرسازی مجدد
-        });
-
-        document.getElementById('trend-yearly-btn').addEventListener('click', () => {
-            currentTrendView = 'yearly';
-            document.getElementById('trend-yearly-btn').className = "btn btn-small btn-blue";
-            document.getElementById('trend-monthly-btn').className = "btn btn-small btn-gray";
-            document.getElementById('trend-monthly-btn').style.backgroundColor = "#7f8c8d";
-            renderPieCharts(labels, retData, whoData); // رندرسازی مجدد
-        });
-    }
-
     if (typeof Chart === 'undefined') {
         const script = document.createElement('script');
         script.src = "https://cdn.jsdelivr.net/npm/chart.js";
-        script.onload = () => renderPieCharts(labels, retData, whoData);
+        script.onload = () => executePieCharts(labels, retData, whoData);
         document.head.appendChild(script);
     } else {
-        renderPieCharts(labels, retData, whoData);
+        executePieCharts(labels, retData, whoData);
     }
 }
 
-function renderPieCharts(labels, retData, whoData) {
+function executePieCharts(labels, retData, whoData) {
     const retCtx = document.getElementById('retail-pie-chart').getContext('2d');
     const whoCtx = document.getElementById('wholesale-pie-chart').getContext('2d');
     const colors = ['#3498db', '#e74c3c', '#2ecc71', '#f1c40f', '#9b59b6', '#e67e22', '#1abc9c', '#34495e', '#d35400', '#7f8c8d'];
 
-    if (retailChartInstance) retailChartInstance.destroy();
-    retailChartInstance = new Chart(retCtx, {
+    if (retailPieInstance) retailPieInstance.destroy();
+    retailPieInstance = new Chart(retCtx, {
         type: 'doughnut',
         data: { labels: labels, datasets: [{ data: retData, backgroundColor: colors.slice(0, labels.length), borderWidth: 2 }] },
         options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { font: { family: 'Tahoma' } } } }, cutout: '65%' }
     });
 
-    if (wholesaleChartInstance) wholesaleChartInstance.destroy();
-    wholesaleChartInstance = new Chart(whoCtx, {
+    if (wholesalePieInstance) wholesalePieInstance.destroy();
+    wholesalePieInstance = new Chart(whoCtx, {
         type: 'doughnut',
         data: { labels: labels, datasets: [{ data: whoData, backgroundColor: colors.slice(0, labels.length), borderWidth: 2 }] },
         options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { font: { family: 'Tahoma' } } } }, cutout: '65%' }
     });
-
-    // 🔥 تحلیل تاریخی کلان تمام دوران و رندر نمودار میله‌ای-خطی دو محوره گوگل ادز 🔥
-    let trendGroups = {};
-    allInvoicesRaw.forEach(inv => {
-        if (inv.status !== 'نهایی') return;
-        let dateObj = inv.timestamp ? inv.timestamp.toDate() : null;
-        if (!dateObj) return;
-
-        let key = "";
-        if (currentTrendView === 'monthly') {
-            let month = String(dateObj.getMonth() + 1).padStart(2, '0');
-            key = `${dateObj.getFullYear()} / ${month}`;
-        } else {
-            key = `${dateObj.getFullYear()}`;
-        }
-
-        if (!trendGroups[key]) trendGroups[key] = { sales: 0, profit: 0 };
-        trendGroups[key].sales += convertToEuro(inv.grandTotal, inv.currency);
-        if (inv.isProfitCalculated && inv.netProfit !== undefined) {
-            trendGroups[key].profit += convertToEuro(inv.netProfit, inv.currency);
-        }
-    });
-
-    let sortedTimelineKeys = Object.keys(trendGroups).sort();
-    let salesTimelineData = [];
-    let profitTimelineData = [];
-
-    sortedTimelineKeys.forEach(k => {
-        salesTimelineData.push(trendGroups[k].sales.toFixed(2));
-        profitTimelineData.push(trendGroups[k].profit.toFixed(2));
-    });
-
-    const trendCtx = document.getElementById('trend-linear-chart').getContext('2d');
-    if (trendChartInstance) trendChartInstance.destroy();
-
-    trendChartInstance = new Chart(trendCtx, {
-        type: 'bar',
-        data: {
-            labels: sortedTimelineKeys,
-            datasets: [
-                {
-                    label: '🔵 مجموع حجم کل فروش (€)',
-                    data: salesTimelineData,
-                    backgroundColor: 'rgba(52, 152, 219, 0.7)',
-                    borderColor: '#3498db',
-                    borderWidth: 2,
-                    borderRadius: 5,
-                    yAxisID: 'y'
-                },
-                {
-                    label: '🟢 مجموع کل سود خالص (€)',
-                    data: profitTimelineData,
-                    backgroundColor: 'transparent',
-                    borderColor: '#2ecc71',
-                    borderWidth: 4,
-                    pointBackgroundColor: '#27ae60',
-                    pointRadius: 6,
-                    pointHoverRadius: 8,
-                    type: 'line',
-                    tension: 0.3,
-                    yAxisID: 'y1'
-                }
-            ]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-                x: { grid: { display: false }, ticks: { font: { family: 'Tahoma', size: 11 } } },
-                y: {
-                    type: 'linear',
-                    display: true,
-                    position: 'right', // حجم فروش سمت راست فریم
-                    title: { display: true, text: 'حجم کل فروش (€)', font: { family: 'Tahoma', weight: 'bold' } },
-                    ticks: { font: { family: 'Tahoma' } }
-                },
-                y1: {
-                    type: 'linear',
-                    display: true,
-                    position: 'left', // سود خالص سمت چپ فریم
-                    grid: { drawOnChartArea: false },
-                    title: { display: true, text: 'سود خالص واقعی (€)', font: { family: 'Tahoma', weight: 'bold' } },
-                    ticks: { font: { family: 'Tahoma' } }
-                }
-            },
-            plugins: {
-                legend: { position: 'top', labels: { font: { family: 'Tahoma', weight: 'bold', size: 12 }, padding: 15 } },
-                tooltip: { bodyFont: { family: 'Tahoma' }, titleFont: { family: 'Tahoma' } }
-            }
-        }
-    });
 }
+
 // ----------------------------------------------------
 
 function renderCalculator() {
