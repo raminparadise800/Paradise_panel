@@ -121,64 +121,105 @@ applyDateBtn.addEventListener('click', applyDateFilter);
 
 function updateDashboard() {
     let retVol = 0, whoVol = 0, retProf = 0, whoProf = 0;
-    let countrySales = {};
+    
+    // تفکیک کشورهای خریدار برای درصدگیری
+    let countrySalesRetail = {};
+    let countrySalesWholesale = {};
 
     filteredFinalInvoices.forEach(inv => {
         if (!inv.isProfitCalculated) return;
 
         const grandTotalEUR = convertToEuro(inv.grandTotal, inv.currency);
         const netProfitEUR = convertToEuro(inv.netProfit || 0, inv.currency);
+        const country = inv.customerCountry || 'نامشخص';
 
         if (inv.invoiceType === 'retail') {
             retVol += grandTotalEUR;
             retProf += netProfitEUR;
+            countrySalesRetail[country] = (countrySalesRetail[country] || 0) + grandTotalEUR;
         } else {
             whoVol += grandTotalEUR;
             whoProf += netProfitEUR;
+            countrySalesWholesale[country] = (countrySalesWholesale[country] || 0) + grandTotalEUR;
         }
-
-        const country = inv.customerCountry || 'نامشخص';
-        if (!countrySales[country]) countrySales[country] = 0;
-        countrySales[country] += grandTotalEUR;
     });
 
+    // آپدیت ۴ کارت قدیمی
     document.getElementById('dash-retail-vol').textContent = `${retVol.toFixed(2)} €`;
     document.getElementById('dash-wholesale-vol').textContent = `${whoVol.toFixed(2)} €`;
     document.getElementById('dash-retail-profit').textContent = `${retProf.toFixed(2)} €`;
     document.getElementById('dash-wholesale-profit').textContent = `${whoProf.toFixed(2)} €`;
 
-    // ساخت کارت مجموع سود نهایی
-    const totalNetProfitEUR = retProf + whoProf;
-    let totalProfitCard = document.getElementById('dash-total-net-profit');
-    if (!totalProfitCard) {
+    // پاک‌سازی کارت تکی قدیمی در صورت وجود (از آپدیت قبلی)
+    const oldTotalProfitCard = document.getElementById('dash-total-net-profit');
+    if (oldTotalProfitCard && oldTotalProfitCard.closest('.summary-card')) {
+        oldTotalProfitCard.closest('.summary-card').remove();
+    }
+
+    // تزریق پویای ردیف جدید: "مجموع کل حجم فروش" و "مجموع کل سود خالص"
+    let totalCardsContainer = document.getElementById('dynamic-total-cards');
+    if (!totalCardsContainer) {
         const wholesaleProfitCard = document.getElementById('dash-wholesale-profit').closest('.summary-card');
         if (wholesaleProfitCard && wholesaleProfitCard.parentNode) {
-            const newCard = document.createElement('div');
-            newCard.className = 'summary-card';
-            newCard.style.cssText = 'background: linear-gradient(135deg, #11998e, #38ef7d); color: white; border: none; box-shadow: 0 4px 15px rgba(46, 204, 113, 0.2);';
-            newCard.innerHTML = `
-                <h4 style="color: rgba(255,255,255,0.85); font-size: 13px; margin-bottom: 10px; font-weight: bold;">📊 مجموع کل سود خالص فاکتورها</h4>
-                <span id="dash-total-net-profit" style="font-size: 26px; font-weight: bold;">0.00 €</span>
-            `;
-            wholesaleProfitCard.parentNode.appendChild(newCard);
-            totalProfitCard = document.getElementById('dash-total-net-profit');
+            const summaryContainer = wholesaleProfitCard.parentNode;
+            totalCardsContainer = document.createElement('div');
+            totalCardsContainer.id = 'dynamic-total-cards';
+            totalCardsContainer.style.cssText = 'display:flex; gap:15px; width:100%; margin-top:20px; flex-wrap:wrap;';
+            summaryContainer.appendChild(totalCardsContainer);
         }
     }
-    if (totalProfitCard) {
-        totalProfitCard.textContent = `${totalNetProfitEUR.toFixed(2)} €`;
+    
+    if (totalCardsContainer) {
+        totalCardsContainer.innerHTML = `
+            <div class="summary-card" style="flex:1; min-width:250px; background: linear-gradient(135deg, #2980b9, #6dd5ed); color: white; border: none; box-shadow: 0 4px 15px rgba(41, 128, 185, 0.2); padding:20px; border-radius:8px; text-align:center;">
+                <h4 style="color: rgba(255,255,255,0.9); font-size: 14px; margin-bottom: 10px; font-weight: bold;">📊 مجموع کل حجم فروش (تک + عمده)</h4>
+                <span style="font-size: 26px; font-weight: bold;">${(retVol + whoVol).toFixed(2)} €</span>
+            </div>
+            <div class="summary-card" style="flex:1; min-width:250px; background: linear-gradient(135deg, #11998e, #38ef7d); color: white; border: none; box-shadow: 0 4px 15px rgba(46, 204, 113, 0.2); padding:20px; border-radius:8px; text-align:center;">
+                <h4 style="color: rgba(255,255,255,0.9); font-size: 14px; margin-bottom: 10px; font-weight: bold;">💰 مجموع کل سود خالص (تک + عمده)</h4>
+                <span style="font-size: 26px; font-weight: bold;">${(retProf + whoProf).toFixed(2)} €</span>
+            </div>
+        `;
     }
 
-    const sortedCountries = Object.entries(countrySales).sort((a, b) => b[1] - a[1]);
+    // طراحی و تزریق لیست کشورهای تفکیک شده با پراگرس بار (درصد)
     const tcDiv = document.getElementById('top-countries');
-    tcDiv.innerHTML = '';
-    sortedCountries.forEach(([country, amount], index) => {
-        tcDiv.innerHTML += `<div style="display:flex; justify-content:space-between; padding:8px; border-bottom:1px solid #eee;">
-            <span>${index + 1}. <strong>${country}</strong></span>
-            <span style="color:#2980b9; font-weight:bold;">~ ${amount.toFixed(2)} €</span>
-        </div>`;
-    });
+    if (tcDiv) {
+        tcDiv.style.display = 'flex';
+        tcDiv.style.gap = '20px';
+        tcDiv.style.flexWrap = 'wrap';
+        tcDiv.style.padding = '0'; // ریست کردن پدینگ‌های قدیمی
+        
+        const buildCountryList = (title, dataObj, totalVol, color) => {
+            let html = `<div style="flex:1; min-width:280px; background:#fff; padding:20px; border-radius:12px; border:1px solid #eee; box-shadow:0 4px 10px rgba(0,0,0,0.03);">
+                <h4 style="color:${color}; margin-top:0; margin-bottom:20px; font-weight:bold; font-size:15px;">${title}</h4>`;
+            
+            const sorted = Object.entries(dataObj).sort((a,b) => b[1] - a[1]);
+            
+            if(sorted.length === 0) {
+                html += `<p style="font-size:13px; color:#777; text-align:center;">هیچ فروشی در این بازه ثبت نشده است.</p>`;
+            }
+            
+            sorted.forEach(([cName, cVol], idx) => {
+                const perc = totalVol > 0 ? ((cVol / totalVol) * 100).toFixed(1) : 0;
+                html += `<div style="margin-bottom:15px;">
+                    <div style="display:flex; justify-content:space-between; font-size:14px; margin-bottom:6px;">
+                        <span>${idx + 1}. <strong>${cName}</strong></span>
+                        <span style="color:${color}; font-weight:bold;">${perc}% <span style="font-size:11px; color:#7f8c8d; font-weight:normal;">(${cVol.toFixed(2)} €)</span></span>
+                    </div>
+                    <div style="width:100%; background:#f1f2f6; height:8px; border-radius:4px; overflow:hidden;">
+                        <div style="width:${perc}%; background:${color}; height:100%; border-radius:4px; transition: width 0.5s ease;"></div>
+                    </div>
+                </div>`;
+            });
+            html += `</div>`;
+            return html;
+        };
 
-    // احضار نمودار روند گوگل ادز برای بخش داشبورد کلان
+        tcDiv.innerHTML = buildCountryList('🛍️ سهم کشورها در تک‌فروشی', countrySalesRetail, retVol, '#2980b9') + 
+                          buildCountryList('📦 سهم کشورها در عمده‌فروشی', countrySalesWholesale, whoVol, '#8e44ad');
+    }
+
     drawTrendChart();
 }
 
@@ -191,7 +232,6 @@ function drawTrendChart() {
     const topCountriesEl = document.getElementById('top-countries');
     if (!topCountriesEl) return;
     
-    // پیدا کردن تبِ داشبورد کلان برای الصاق نمودار در انتهای آن
     const dashboardTab = topCountriesEl.closest('.tab-content') || topCountriesEl.parentElement.parentElement;
     
     let trendContainer = document.getElementById('historical-trend-container');
