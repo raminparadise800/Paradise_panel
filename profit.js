@@ -156,28 +156,28 @@ function updateDashboard() {
         oldTotalProfitCard.closest('.summary-card').remove();
     }
 
-    // تزریق پویای ردیف جدید: "مجموع کل حجم فروش" و "مجموع کل سود خالص"
+    // تزریق قدرتمند ردیف جدید: "مجموع کل حجم فروش" و "مجموع کل سود خالص"
     let totalCardsContainer = document.getElementById('dynamic-total-cards');
     if (!totalCardsContainer) {
-        const wholesaleProfitCard = document.getElementById('dash-wholesale-profit').closest('.summary-card');
-        if (wholesaleProfitCard && wholesaleProfitCard.parentNode) {
-            const summaryContainer = wholesaleProfitCard.parentNode;
+        // پیدا کردن بخش کشورها برای قرار دادن کارت‌ها دقیقاً در بالای آن
+        const topCountriesContainer = document.getElementById('top-countries');
+        if (topCountriesContainer && topCountriesContainer.parentNode) {
             totalCardsContainer = document.createElement('div');
             totalCardsContainer.id = 'dynamic-total-cards';
-            totalCardsContainer.style.cssText = 'display:flex; gap:15px; width:100%; margin-top:20px; flex-wrap:wrap;';
-            summaryContainer.appendChild(totalCardsContainer);
+            totalCardsContainer.style.cssText = 'display:flex; gap:15px; width:100%; margin-top:30px; margin-bottom:30px; flex-wrap:wrap;';
+            topCountriesContainer.parentNode.insertBefore(totalCardsContainer, topCountriesContainer);
         }
     }
     
     if (totalCardsContainer) {
         totalCardsContainer.innerHTML = `
-            <div class="summary-card" style="flex:1; min-width:250px; background: linear-gradient(135deg, #2980b9, #6dd5ed); color: white; border: none; box-shadow: 0 4px 15px rgba(41, 128, 185, 0.2); padding:20px; border-radius:8px; text-align:center;">
-                <h4 style="color: rgba(255,255,255,0.9); font-size: 14px; margin-bottom: 10px; font-weight: bold;">📊 مجموع کل حجم فروش (تک + عمده)</h4>
-                <span style="font-size: 26px; font-weight: bold;">${(retVol + whoVol).toFixed(2)} €</span>
+            <div style="flex:1; min-width:250px; background: linear-gradient(135deg, #2980b9, #6dd5ed); color: white; border: none; box-shadow: 0 4px 15px rgba(41, 128, 185, 0.2); padding:20px; border-radius:12px; text-align:center;">
+                <h4 style="color: rgba(255,255,255,0.9); font-size: 15px; margin-bottom: 10px; font-weight: bold;">🌍 مجموع کل حجم فروش (تک + عمده)</h4>
+                <span style="font-size: 28px; font-weight: bold; font-family: Tahoma;">${(retVol + whoVol).toFixed(2)} €</span>
             </div>
-            <div class="summary-card" style="flex:1; min-width:250px; background: linear-gradient(135deg, #11998e, #38ef7d); color: white; border: none; box-shadow: 0 4px 15px rgba(46, 204, 113, 0.2); padding:20px; border-radius:8px; text-align:center;">
-                <h4 style="color: rgba(255,255,255,0.9); font-size: 14px; margin-bottom: 10px; font-weight: bold;">💰 مجموع کل سود خالص (تک + عمده)</h4>
-                <span style="font-size: 26px; font-weight: bold;">${(retProf + whoProf).toFixed(2)} €</span>
+            <div style="flex:1; min-width:250px; background: linear-gradient(135deg, #11998e, #38ef7d); color: white; border: none; box-shadow: 0 4px 15px rgba(46, 204, 113, 0.2); padding:20px; border-radius:12px; text-align:center;">
+                <h4 style="color: rgba(255,255,255,0.9); font-size: 15px; margin-bottom: 10px; font-weight: bold;">💰 مجموع کل سود خالص (تک + عمده)</h4>
+                <span style="font-size: 28px; font-weight: bold; font-family: Tahoma;">${(retProf + whoProf).toFixed(2)} €</span>
             </div>
         `;
     }
@@ -188,7 +188,7 @@ function updateDashboard() {
         tcDiv.style.display = 'flex';
         tcDiv.style.gap = '20px';
         tcDiv.style.flexWrap = 'wrap';
-        tcDiv.style.padding = '0'; // ریست کردن پدینگ‌های قدیمی
+        tcDiv.style.padding = '0'; 
         
         const buildCountryList = (title, dataObj, totalVol, color) => {
             let html = `<div style="flex:1; min-width:280px; background:#fff; padding:20px; border-radius:12px; border:1px solid #eee; box-shadow:0 4px 10px rgba(0,0,0,0.03);">
