@@ -11,6 +11,9 @@ let filteredAllInvoices = [];
 let filteredFinalInvoices = []; 
 let currentCalcFilter = 'pending'; 
 let currentTrendView = 'monthly'; 
+// ذخیره وضعیت انتخابگرهای داشبورد کلان برای جلوگیری از ریست شدن هنگام تغییر تاریخ
+let currentCountryFilter = 'total';
+let currentSourceFilter = 'total';
 
 let exchangeRates = null;
 const currencyCodes = { "€": "EUR", "£": "GBP", "$": "USD", "₺": "TRY" };
@@ -122,11 +125,14 @@ applyDateBtn.addEventListener('click', applyDateFilter);
 function updateDashboard() {
     let retVol = 0, whoVol = 0, retProf = 0, whoProf = 0;
     
-    // تفکیک متغیرهای کشور و منبع بازاریابی
+    // تفکیک متغیرهای کشور و منبع بازاریابی در سه حالت: تک، عمده، مجموع
     let countrySalesRetail = {};
     let countrySalesWholesale = {};
+    let countrySalesTotal = {};
+    
     let sourceSalesRetail = {};
     let sourceSalesWholesale = {};
+    let sourceSalesTotal = {};
 
     filteredFinalInvoices.forEach(inv => {
         if (!inv.isProfitCalculated) return;
@@ -147,6 +153,9 @@ function updateDashboard() {
             countrySalesWholesale[country] = (countrySalesWholesale[country] || 0) + grandTotalEUR;
             sourceSalesWholesale[source] = (sourceSalesWholesale[source] || 0) + grandTotalEUR;
         }
+        
+        countrySalesTotal[country] = (countrySalesTotal[country] || 0) + grandTotalEUR;
+        sourceSalesTotal[source] = (sourceSalesTotal[source] || 0) + grandTotalEUR;
     });
 
     // آپدیت ۴ کارت قدیمی
@@ -155,13 +164,13 @@ function updateDashboard() {
     document.getElementById('dash-retail-profit').textContent = `${retProf.toFixed(2)} €`;
     document.getElementById('dash-wholesale-profit').textContent = `${whoProf.toFixed(2)} €`;
 
-    // پاک‌سازی کارت تکی قدیمی
+    // پاک‌سازی کارت تکی قدیمی در صورت وجود
     const oldTotalProfitCard = document.getElementById('dash-total-net-profit');
     if (oldTotalProfitCard && oldTotalProfitCard.closest('.summary-card')) {
         oldTotalProfitCard.closest('.summary-card').remove();
     }
 
-    // تزریق ردیف: "مجموع کل حجم فروش" و "مجموع کل سود خالص"
+    // تزریق ردیف جدید: "مجموع کل حجم فروش" و "مجموع کل سود خالص"
     let totalCardsContainer = document.getElementById('dynamic-total-cards');
     if (!totalCardsContainer) {
         const topCountriesContainer = document.getElementById('top-countries');
@@ -186,58 +195,99 @@ function updateDashboard() {
         `;
     }
 
-    // طراحی سازنده لیست‌های پراگرس‌بار برای کشورها و منابع
-    const buildProgressList = (title, dataObj, totalVol, color) => {
-        let html = `<div style="flex:1; min-width:280px; background:#fff; padding:20px; border-radius:12px; border:1px solid #eee; box-shadow:0 4px 10px rgba(0,0,0,0.03);">
-            <h4 style="color:${color}; margin-top:0; margin-bottom:20px; font-weight:bold; font-size:15px;">${title}</h4>`;
-        
-        const sorted = Object.entries(dataObj).sort((a,b) => b[1] - a[1]);
-        
-        if(sorted.length === 0) {
-            html += `<p style="font-size:13px; color:#777; text-align:center;">داده‌ای در این بازه ثبت نشده است.</p>`;
-        }
-        
-        sorted.forEach(([itemName, itemVol], idx) => {
-            const perc = totalVol > 0 ? ((itemVol / totalVol) * 100).toFixed(1) : 0;
-            html += `<div style="margin-bottom:15px;">
-                <div style="display:flex; justify-content:space-between; font-size:14px; margin-bottom:6px;">
-                    <span>${idx + 1}. <strong>${itemName}</strong></span>
-                    <span style="color:${color}; font-weight:bold;">${perc}% <span style="font-size:11px; color:#7f8c8d; font-weight:normal;">(${itemVol.toFixed(2)} €)</span></span>
+    // موتور سازنده پنل‌های یکپارچه و تعاملی (Toggle Panel)
+    const renderTogglePanel = (container, title, icon, filterName, currentFilter, dataRetail, dataWholesale, dataTotal) => {
+        container.style.cssText = 'width:100%; margin-bottom:20px;'; 
+        container.innerHTML = `
+            <div style="background:#fff; padding:20px; border-radius:12px; border:1px solid #eee; box-shadow:0 4px 10px rgba(0,0,0,0.03);">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; border-bottom:1px solid #eee; padding-bottom:15px; flex-wrap:wrap; gap:10px;">
+                    <h4 style="color:#2c3e50; margin:0; font-weight:bold; font-size:15px;">${icon} ${title}</h4>
+                    <div style="display:flex; gap:15px; background:#f8f9fa; padding:8px 15px; border-radius:8px; border:1px solid #ddd;">
+                        <label style="cursor:pointer; display:flex; align-items:center; gap:5px; font-size:13px; font-weight:bold; color:#16a085;">
+                            <input type="radio" name="${filterName}" value="total" ${currentFilter === 'total' ? 'checked' : ''}> 📊 مجموع
+                        </label>
+                        <label style="cursor:pointer; display:flex; align-items:center; gap:5px; font-size:13px; font-weight:bold; color:#2980b9;">
+                            <input type="radio" name="${filterName}" value="retail" ${currentFilter === 'retail' ? 'checked' : ''}> 🛍️ تک‌فروشی
+                        </label>
+                        <label style="cursor:pointer; display:flex; align-items:center; gap:5px; font-size:13px; font-weight:bold; color:#8e44ad;">
+                            <input type="radio" name="${filterName}" value="wholesale" ${currentFilter === 'wholesale' ? 'checked' : ''}> 📦 عمده‌فروشی
+                        </label>
+                    </div>
                 </div>
-                <div style="width:100%; background:#f1f2f6; height:8px; border-radius:4px; overflow:hidden;">
-                    <div style="width:${perc}%; background:${color}; height:100%; border-radius:4px; transition: width 0.5s ease;"></div>
-                </div>
-            </div>`;
+                <div class="${filterName}-content" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px;"></div>
+            </div>
+        `;
+
+        const updateContent = (filterValue) => {
+            const contentDiv = container.querySelector(`.${filterName}-content`);
+            let dataObj = {};
+            let totalVol = 0;
+            let color = '';
+
+            if (filterValue === 'total') {
+                dataObj = dataTotal;
+                totalVol = retVol + whoVol;
+                color = '#16a085';
+            } else if (filterValue === 'retail') {
+                dataObj = dataRetail;
+                totalVol = retVol;
+                color = '#2980b9';
+            } else if (filterValue === 'wholesale') {
+                dataObj = dataWholesale;
+                totalVol = whoVol;
+                color = '#8e44ad';
+            }
+
+            const sorted = Object.entries(dataObj).sort((a,b) => b[1] - a[1]);
+            
+            if(sorted.length === 0) {
+                contentDiv.innerHTML = `<p style="font-size:13px; color:#777; width:100%; grid-column: 1 / -1; text-align:center;">داده‌ای در این بازه زمانی ثبت نشده است.</p>`;
+                return;
+            }
+
+            let html = '';
+            sorted.forEach(([itemName, itemVol], idx) => {
+                const perc = totalVol > 0 ? ((itemVol / totalVol) * 100).toFixed(1) : 0;
+                html += `<div>
+                    <div style="display:flex; justify-content:space-between; font-size:14px; margin-bottom:6px;">
+                        <span>${idx + 1}. <strong>${itemName}</strong></span>
+                        <span style="color:${color}; font-weight:bold;">${perc}% <span style="font-size:11px; color:#7f8c8d; font-weight:normal;">(${itemVol.toFixed(2)} €)</span></span>
+                    </div>
+                    <div style="width:100%; background:#f1f2f6; height:8px; border-radius:4px; overflow:hidden;">
+                        <div style="width:${perc}%; background:${color}; height:100%; border-radius:4px; transition: width 0.5s ease;"></div>
+                    </div>
+                </div>`;
+            });
+            contentDiv.innerHTML = html;
+        };
+
+        container.querySelectorAll(`input[name="${filterName}"]`).forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                if(filterName === 'country-filter') currentCountryFilter = e.target.value;
+                if(filterName === 'source-filter') currentSourceFilter = e.target.value;
+                updateContent(e.target.value);
+            });
         });
-        html += `</div>`;
-        return html;
+
+        updateContent(currentFilter);
     };
 
-    // لیست کشورها
+    // اعمال موتور یکپارچه روی کشورها
     const tcDiv = document.getElementById('top-countries');
     if (tcDiv) {
-        tcDiv.style.display = 'flex';
-        tcDiv.style.gap = '20px';
-        tcDiv.style.flexWrap = 'wrap';
-        tcDiv.style.padding = '0'; 
-        tcDiv.innerHTML = buildProgressList('🛍️ سهم کشورها در تک‌فروشی', countrySalesRetail, retVol, '#2980b9') + 
-                          buildProgressList('📦 سهم کشورها در عمده‌فروشی', countrySalesWholesale, whoVol, '#8e44ad');
+        renderTogglePanel(tcDiv, 'سهم کشورها از بازار جهانی', '🌍', 'country-filter', currentCountryFilter, countrySalesRetail, countrySalesWholesale, countrySalesTotal);
     }
 
-    // تزریق پویای لیست منابع بازاریابی (پایین‌تر از کشورها)
+    // اعمال موتور یکپارچه روی منابع بازاریابی
     let sourcesDiv = document.getElementById('top-sources');
-    if (!sourcesDiv) {
-        if (tcDiv && tcDiv.parentNode) {
-            sourcesDiv = document.createElement('div');
-            sourcesDiv.id = 'top-sources';
-            sourcesDiv.style.cssText = 'display:flex; gap:20px; width:100%; margin-top:20px; flex-wrap:wrap; padding:0;';
-            tcDiv.parentNode.insertBefore(sourcesDiv, tcDiv.nextSibling);
-        }
+    if (!sourcesDiv && tcDiv && tcDiv.parentNode) {
+        sourcesDiv = document.createElement('div');
+        sourcesDiv.id = 'top-sources';
+        tcDiv.parentNode.insertBefore(sourcesDiv, tcDiv.nextSibling);
     }
     
     if (sourcesDiv) {
-        sourcesDiv.innerHTML = buildProgressList('🎯 منابع بازاریابی در تک‌فروشی', sourceSalesRetail, retVol, '#16a085') + 
-                               buildProgressList('📢 منابع بازاریابی در عمده‌فروشی', sourceSalesWholesale, whoVol, '#c0392b');
+        renderTogglePanel(sourcesDiv, 'عملکرد منابع بازاریابی (Lead Sources)', '🎯', 'source-filter', currentSourceFilter, sourceSalesRetail, sourceSalesWholesale, sourceSalesTotal);
     }
 
     drawTrendChart();
@@ -249,7 +299,6 @@ function updateDashboard() {
 let trendChartInstance = null;
 
 function drawTrendChart() {
-    // پیدا کردن پایین‌ترین پنل (که الان منابع بازاریابی است) برای قرار دادن نمودار
     let anchorEl = document.getElementById('top-sources') || document.getElementById('top-countries');
     if (!anchorEl) return;
     
