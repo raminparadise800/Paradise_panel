@@ -122,9 +122,11 @@ applyDateBtn.addEventListener('click', applyDateFilter);
 function updateDashboard() {
     let retVol = 0, whoVol = 0, retProf = 0, whoProf = 0;
     
-    // تفکیک کشورهای خریدار برای درصدگیری
+    // تفکیک متغیرهای کشور و منبع بازاریابی
     let countrySalesRetail = {};
     let countrySalesWholesale = {};
+    let sourceSalesRetail = {};
+    let sourceSalesWholesale = {};
 
     filteredFinalInvoices.forEach(inv => {
         if (!inv.isProfitCalculated) return;
@@ -132,15 +134,18 @@ function updateDashboard() {
         const grandTotalEUR = convertToEuro(inv.grandTotal, inv.currency);
         const netProfitEUR = convertToEuro(inv.netProfit || 0, inv.currency);
         const country = inv.customerCountry || 'نامشخص';
+        const source = inv.leadSource || 'ثبت نشده';
 
         if (inv.invoiceType === 'retail') {
             retVol += grandTotalEUR;
             retProf += netProfitEUR;
             countrySalesRetail[country] = (countrySalesRetail[country] || 0) + grandTotalEUR;
+            sourceSalesRetail[source] = (sourceSalesRetail[source] || 0) + grandTotalEUR;
         } else {
             whoVol += grandTotalEUR;
             whoProf += netProfitEUR;
             countrySalesWholesale[country] = (countrySalesWholesale[country] || 0) + grandTotalEUR;
+            sourceSalesWholesale[source] = (sourceSalesWholesale[source] || 0) + grandTotalEUR;
         }
     });
 
@@ -150,16 +155,15 @@ function updateDashboard() {
     document.getElementById('dash-retail-profit').textContent = `${retProf.toFixed(2)} €`;
     document.getElementById('dash-wholesale-profit').textContent = `${whoProf.toFixed(2)} €`;
 
-    // پاک‌سازی کارت تکی قدیمی در صورت وجود (از آپدیت قبلی)
+    // پاک‌سازی کارت تکی قدیمی
     const oldTotalProfitCard = document.getElementById('dash-total-net-profit');
     if (oldTotalProfitCard && oldTotalProfitCard.closest('.summary-card')) {
         oldTotalProfitCard.closest('.summary-card').remove();
     }
 
-    // تزریق قدرتمند ردیف جدید: "مجموع کل حجم فروش" و "مجموع کل سود خالص"
+    // تزریق ردیف: "مجموع کل حجم فروش" و "مجموع کل سود خالص"
     let totalCardsContainer = document.getElementById('dynamic-total-cards');
     if (!totalCardsContainer) {
-        // پیدا کردن بخش کشورها برای قرار دادن کارت‌ها دقیقاً در بالای آن
         const topCountriesContainer = document.getElementById('top-countries');
         if (topCountriesContainer && topCountriesContainer.parentNode) {
             totalCardsContainer = document.createElement('div');
@@ -182,42 +186,58 @@ function updateDashboard() {
         `;
     }
 
-    // طراحی و تزریق لیست کشورهای تفکیک شده با پراگرس بار (درصد)
+    // طراحی سازنده لیست‌های پراگرس‌بار برای کشورها و منابع
+    const buildProgressList = (title, dataObj, totalVol, color) => {
+        let html = `<div style="flex:1; min-width:280px; background:#fff; padding:20px; border-radius:12px; border:1px solid #eee; box-shadow:0 4px 10px rgba(0,0,0,0.03);">
+            <h4 style="color:${color}; margin-top:0; margin-bottom:20px; font-weight:bold; font-size:15px;">${title}</h4>`;
+        
+        const sorted = Object.entries(dataObj).sort((a,b) => b[1] - a[1]);
+        
+        if(sorted.length === 0) {
+            html += `<p style="font-size:13px; color:#777; text-align:center;">داده‌ای در این بازه ثبت نشده است.</p>`;
+        }
+        
+        sorted.forEach(([itemName, itemVol], idx) => {
+            const perc = totalVol > 0 ? ((itemVol / totalVol) * 100).toFixed(1) : 0;
+            html += `<div style="margin-bottom:15px;">
+                <div style="display:flex; justify-content:space-between; font-size:14px; margin-bottom:6px;">
+                    <span>${idx + 1}. <strong>${itemName}</strong></span>
+                    <span style="color:${color}; font-weight:bold;">${perc}% <span style="font-size:11px; color:#7f8c8d; font-weight:normal;">(${itemVol.toFixed(2)} €)</span></span>
+                </div>
+                <div style="width:100%; background:#f1f2f6; height:8px; border-radius:4px; overflow:hidden;">
+                    <div style="width:${perc}%; background:${color}; height:100%; border-radius:4px; transition: width 0.5s ease;"></div>
+                </div>
+            </div>`;
+        });
+        html += `</div>`;
+        return html;
+    };
+
+    // لیست کشورها
     const tcDiv = document.getElementById('top-countries');
     if (tcDiv) {
         tcDiv.style.display = 'flex';
         tcDiv.style.gap = '20px';
         tcDiv.style.flexWrap = 'wrap';
         tcDiv.style.padding = '0'; 
-        
-        const buildCountryList = (title, dataObj, totalVol, color) => {
-            let html = `<div style="flex:1; min-width:280px; background:#fff; padding:20px; border-radius:12px; border:1px solid #eee; box-shadow:0 4px 10px rgba(0,0,0,0.03);">
-                <h4 style="color:${color}; margin-top:0; margin-bottom:20px; font-weight:bold; font-size:15px;">${title}</h4>`;
-            
-            const sorted = Object.entries(dataObj).sort((a,b) => b[1] - a[1]);
-            
-            if(sorted.length === 0) {
-                html += `<p style="font-size:13px; color:#777; text-align:center;">هیچ فروشی در این بازه ثبت نشده است.</p>`;
-            }
-            
-            sorted.forEach(([cName, cVol], idx) => {
-                const perc = totalVol > 0 ? ((cVol / totalVol) * 100).toFixed(1) : 0;
-                html += `<div style="margin-bottom:15px;">
-                    <div style="display:flex; justify-content:space-between; font-size:14px; margin-bottom:6px;">
-                        <span>${idx + 1}. <strong>${cName}</strong></span>
-                        <span style="color:${color}; font-weight:bold;">${perc}% <span style="font-size:11px; color:#7f8c8d; font-weight:normal;">(${cVol.toFixed(2)} €)</span></span>
-                    </div>
-                    <div style="width:100%; background:#f1f2f6; height:8px; border-radius:4px; overflow:hidden;">
-                        <div style="width:${perc}%; background:${color}; height:100%; border-radius:4px; transition: width 0.5s ease;"></div>
-                    </div>
-                </div>`;
-            });
-            html += `</div>`;
-            return html;
-        };
+        tcDiv.innerHTML = buildProgressList('🛍️ سهم کشورها در تک‌فروشی', countrySalesRetail, retVol, '#2980b9') + 
+                          buildProgressList('📦 سهم کشورها در عمده‌فروشی', countrySalesWholesale, whoVol, '#8e44ad');
+    }
 
-        tcDiv.innerHTML = buildCountryList('🛍️ سهم کشورها در تک‌فروشی', countrySalesRetail, retVol, '#2980b9') + 
-                          buildCountryList('📦 سهم کشورها در عمده‌فروشی', countrySalesWholesale, whoVol, '#8e44ad');
+    // تزریق پویای لیست منابع بازاریابی (پایین‌تر از کشورها)
+    let sourcesDiv = document.getElementById('top-sources');
+    if (!sourcesDiv) {
+        if (tcDiv && tcDiv.parentNode) {
+            sourcesDiv = document.createElement('div');
+            sourcesDiv.id = 'top-sources';
+            sourcesDiv.style.cssText = 'display:flex; gap:20px; width:100%; margin-top:20px; flex-wrap:wrap; padding:0;';
+            tcDiv.parentNode.insertBefore(sourcesDiv, tcDiv.nextSibling);
+        }
+    }
+    
+    if (sourcesDiv) {
+        sourcesDiv.innerHTML = buildProgressList('🎯 منابع بازاریابی در تک‌فروشی', sourceSalesRetail, retVol, '#16a085') + 
+                               buildProgressList('📢 منابع بازاریابی در عمده‌فروشی', sourceSalesWholesale, whoVol, '#c0392b');
     }
 
     drawTrendChart();
@@ -229,10 +249,11 @@ function updateDashboard() {
 let trendChartInstance = null;
 
 function drawTrendChart() {
-    const topCountriesEl = document.getElementById('top-countries');
-    if (!topCountriesEl) return;
+    // پیدا کردن پایین‌ترین پنل (که الان منابع بازاریابی است) برای قرار دادن نمودار
+    let anchorEl = document.getElementById('top-sources') || document.getElementById('top-countries');
+    if (!anchorEl) return;
     
-    const dashboardTab = topCountriesEl.closest('.tab-content') || topCountriesEl.parentElement.parentElement;
+    const dashboardTab = anchorEl.closest('.tab-content') || anchorEl.parentElement.parentElement;
     
     let trendContainer = document.getElementById('historical-trend-container');
     if (!trendContainer) {
