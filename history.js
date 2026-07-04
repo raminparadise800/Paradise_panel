@@ -14,6 +14,8 @@ let allInvoices = [];
 let isAdmin = false;
 
 const labels = ["ثبت اولیه", "نهایی", "کنسل شده"];
+// منابع پیش‌فرض بازاریابی
+const baseLeadSources = ["اینستاگرام", "گوگل", "تلگرام", "تیک‌تاک", "یوتیوب", "قدیمی", "معرفی"];
 
 onAuthStateChanged(auth, (user) => {
     if (user) {
@@ -23,7 +25,7 @@ onAuthStateChanged(auth, (user) => {
 });
 
 async function loadInvoices() {
-    historyBody.innerHTML = '<tr><td colspan="9" style="text-align:center;">در حال بارگذاری...</td></tr>';
+    historyBody.innerHTML = '<tr><td colspan="10" style="text-align:center;">در حال بارگذاری...</td></tr>';
     allInvoices = [];
     try {
         const retailSnap = await getDocs(collection(db, "Retail_Invoices"));
@@ -34,12 +36,21 @@ async function loadInvoices() {
 
         allInvoices.sort((a, b) => (b.timestamp?.toMillis() || 0) - (a.timestamp?.toMillis() || 0));
         renderTable(allInvoices);
-    } catch (e) { historyBody.innerHTML = '<tr><td colspan="9" style="text-align:center; color: red;">خطا در ارتباط با سرور</td></tr>'; }
+    } catch (e) { historyBody.innerHTML = '<tr><td colspan="10" style="text-align:center; color: red;">خطا در ارتباط با سرور</td></tr>'; }
 }
 
 function renderTable(data) {
     historyBody.innerHTML = '';
-    if (data.length === 0) return historyBody.innerHTML = '<tr><td colspan="9" style="text-align:center;">موردی یافت نشد.</td></tr>';
+    if (data.length === 0) return historyBody.innerHTML = '<tr><td colspan="10" style="text-align:center;">موردی یافت نشد.</td></tr>';
+
+    // استخراج منابع جدیدی که قبلا در دیتابیس ثبت شده‌اند تا به لیست پیش‌فرض اضافه شوند
+    const dynamicSources = new Set(baseLeadSources);
+    allInvoices.forEach(inv => {
+        if (inv.leadSource && inv.leadSource.trim() !== '') {
+            dynamicSources.add(inv.leadSource);
+        }
+    });
+    const finalSourcesList = Array.from(dynamicSources);
 
     data.forEach(inv => {
         const tr = document.createElement('tr');
@@ -53,10 +64,17 @@ function renderTable(data) {
         const weightDisplay = inv.totalWeight ? `${inv.totalWeight}` : '0';
         const sellerName = inv.salespersonName || '-'; 
 
-        let selectOptions = '';
+        let statusOptions = '';
         labels.forEach(lbl => {
-            selectOptions += `<option value="${lbl}" ${inv.status === lbl ? 'selected' : ''}>${lbl}</option>`;
+            statusOptions += `<option value="${lbl}" ${inv.status === lbl ? 'selected' : ''}>${lbl}</option>`;
         });
+
+        // ساخت لیست کشویی منابع جذب مشتری
+        let sourceOptions = `<option value="">انتخاب...</option>`;
+        finalSourcesList.forEach(src => {
+            sourceOptions += `<option value="${src}" ${inv.leadSource === src ? 'selected' : ''}>${src}</option>`;
+        });
+        sourceOptions += `<option value="add_new" style="background:#f1f2f6; font-weight:bold; color:#2980b9;">➕ منبع جدید...</option>`;
 
         tr.innerHTML = `
             <td style="font-weight: bold; color: #2980b9;">${inv.invoiceNumber || '-'}</td>
@@ -66,8 +84,13 @@ function renderTable(data) {
             <td style="font-weight: bold; color:#8e44ad;">${sellerName}</td>
             <td style="color: #d35400; font-weight: bold;">${weightDisplay}</td>
             <td>
+                <select class="source-select" data-id="${inv.id}" data-col="${inv.collectionName}" style="background: #fdf2e9; border: 1px solid #e67e22;">
+                    ${sourceOptions}
+                </select>
+            </td>
+            <td>
                 <select class="status-select ${inv.status === 'نهایی' ? 'status-نهایی' : ''}" data-id="${inv.id}" data-col="${inv.collectionName}">
-                    ${selectOptions}
+                    ${statusOptions}
                 </select>
             </td>
             <td style="font-weight:bold; color:#27ae60;">${inv.grandTotal.toFixed(2)} ${inv.currency}</td>
@@ -76,6 +99,7 @@ function renderTable(data) {
         historyBody.appendChild(tr);
     });
 
+    // رویداد تغییر وضعیت فاکتور
     document.querySelectorAll('.status-select').forEach(select => {
         select.addEventListener('change', async (e) => {
             const newStatus = e.target.value;
@@ -89,6 +113,43 @@ function renderTable(data) {
                 const invIndex = allInvoices.findIndex(i => i.id === docId && i.collectionName === colName);
                 if(invIndex > -1) allInvoices[invIndex].status = newStatus;
             } catch (error) { alert("خطا در تغییر وضعیت"); }
+        });
+    });
+
+    // رویداد تغییر منبع مشتری (Lead Source)
+    document.querySelectorAll('.source-select').forEach(select => {
+        select.addEventListener('change', async (e) => {
+            let newValue = e.target.value;
+            const docId = e.target.dataset.id;
+            const colName = e.target.dataset.col;
+
+            if (newValue === 'add_new') {
+                const customSource = prompt("لطفاً نام منبع جدید را وارد کنید (مثلاً: فیسبوک):");
+                if (customSource && customSource.trim() !== '') {
+                    newValue = customSource.trim();
+                } else {
+                    // اگر منصرف شد، برگردد به مقدار قبلی
+                    const inv = allInvoices.find(i => i.id === docId && i.collectionName === colName);
+                    e.target.value = inv.leadSource || '';
+                    return;
+                }
+            }
+
+            try {
+                e.target.disabled = true; // قفل موقت تا ذخیره در دیتابیس انجام شود
+                await updateDoc(doc(db, colName, docId), { leadSource: newValue });
+                
+                // آپدیت حافظه موقت سیستم
+                const invIndex = allInvoices.findIndex(i => i.id === docId && i.collectionName === colName);
+                if(invIndex > -1) allInvoices[invIndex].leadSource = newValue;
+                
+                e.target.disabled = false;
+                applyFilters(); // رفرش جدول تا منبع جدید در لیست همه کشویی‌ها ظاهر شود
+                
+            } catch (error) { 
+                alert("خطا در ثبت منبع"); 
+                e.target.disabled = false;
+            }
         });
     });
 
