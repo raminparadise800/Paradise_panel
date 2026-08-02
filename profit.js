@@ -125,7 +125,7 @@ applyDateBtn.addEventListener('click', applyDateFilter);
 function updateDashboard() {
     let retVol = 0, whoVol = 0, retProf = 0, whoProf = 0;
     
-    // تفکیک متغیرهای کشور و منبع بازاریابی در سه حالت: تک، عمده، مجموع
+    // تفکیک متغیرهای کشور و منبع بازاریابی در سه حالت: تک، عمده، مجموع (شامل حجم یورو و تعداد خرید)
     let countrySalesRetail = {};
     let countrySalesWholesale = {};
     let countrySalesTotal = {};
@@ -133,6 +133,13 @@ function updateDashboard() {
     let sourceSalesRetail = {};
     let sourceSalesWholesale = {};
     let sourceSalesTotal = {};
+
+    // موتور شمارنده هوشمند برای حجم و تعداد
+    const addData = (obj, key, amount) => {
+        if(!obj[key]) obj[key] = { vol: 0, count: 0 };
+        obj[key].vol += amount;
+        obj[key].count += 1;
+    };
 
     filteredFinalInvoices.forEach(inv => {
         if (!inv.isProfitCalculated) return;
@@ -145,17 +152,17 @@ function updateDashboard() {
         if (inv.invoiceType === 'retail') {
             retVol += grandTotalEUR;
             retProf += netProfitEUR;
-            countrySalesRetail[country] = (countrySalesRetail[country] || 0) + grandTotalEUR;
-            sourceSalesRetail[source] = (sourceSalesRetail[source] || 0) + grandTotalEUR;
+            addData(countrySalesRetail, country, grandTotalEUR);
+            addData(sourceSalesRetail, source, grandTotalEUR);
         } else {
             whoVol += grandTotalEUR;
             whoProf += netProfitEUR;
-            countrySalesWholesale[country] = (countrySalesWholesale[country] || 0) + grandTotalEUR;
-            sourceSalesWholesale[source] = (sourceSalesWholesale[source] || 0) + grandTotalEUR;
+            addData(countrySalesWholesale, country, grandTotalEUR);
+            addData(sourceSalesWholesale, source, grandTotalEUR);
         }
         
-        countrySalesTotal[country] = (countrySalesTotal[country] || 0) + grandTotalEUR;
-        sourceSalesTotal[source] = (sourceSalesTotal[source] || 0) + grandTotalEUR;
+        addData(countrySalesTotal, country, grandTotalEUR);
+        addData(sourceSalesTotal, source, grandTotalEUR);
     });
 
     // آپدیت ۴ کارت قدیمی
@@ -195,7 +202,7 @@ function updateDashboard() {
         `;
     }
 
-    // موتور سازنده پنل‌های یکپارچه و تعاملی (Toggle Panel)
+    // موتور سازنده پنل‌های یکپارچه و تعاملی (Toggle Panel) با قابلیت نمایش تعداد
     const renderTogglePanel = (container, title, icon, filterName, currentFilter, dataRetail, dataWholesale, dataTotal) => {
         container.style.cssText = 'width:100%; margin-bottom:20px;'; 
         container.innerHTML = `
@@ -238,7 +245,7 @@ function updateDashboard() {
                 color = '#8e44ad';
             }
 
-            const sorted = Object.entries(dataObj).sort((a,b) => b[1] - a[1]);
+            const sorted = Object.entries(dataObj).sort((a,b) => b[1].vol - a[1].vol);
             
             if(sorted.length === 0) {
                 contentDiv.innerHTML = `<p style="font-size:13px; color:#777; width:100%; grid-column: 1 / -1; text-align:center;">داده‌ای در این بازه زمانی ثبت نشده است.</p>`;
@@ -246,12 +253,18 @@ function updateDashboard() {
             }
 
             let html = '';
-            sorted.forEach(([itemName, itemVol], idx) => {
+            sorted.forEach(([itemName, itemData], idx) => {
+                const itemVol = itemData.vol;
+                const itemCount = itemData.count;
                 const perc = totalVol > 0 ? ((itemVol / totalVol) * 100).toFixed(1) : 0;
+                
                 html += `<div>
-                    <div style="display:flex; justify-content:space-between; font-size:14px; margin-bottom:6px;">
+                    <div style="display:flex; justify-content:space-between; align-items: flex-end; font-size:14px; margin-bottom:6px;">
                         <span>${idx + 1}. <strong>${itemName}</strong></span>
-                        <span style="color:${color}; font-weight:bold;">${perc}% <span style="font-size:11px; color:#7f8c8d; font-weight:normal;">(${itemVol.toFixed(2)} €)</span></span>
+                        <div style="text-align:left;">
+                            <span style="color:${color}; font-weight:bold; display:block; margin-bottom:4px;">${perc}% <span style="font-size:11px; color:#7f8c8d; font-weight:normal;">(${itemVol.toFixed(2)} €)</span></span>
+                            <span style="font-size:11px; color:#34495e; background:#f1f2f6; padding:3px 6px; border-radius:4px; font-weight:bold; border: 1px solid #e0e0e0;">تعداد: ${itemCount} خرید</span>
+                        </div>
                     </div>
                     <div style="width:100%; background:#f1f2f6; height:8px; border-radius:4px; overflow:hidden;">
                         <div style="width:${perc}%; background:${color}; height:100%; border-radius:4px; transition: width 0.5s ease;"></div>
