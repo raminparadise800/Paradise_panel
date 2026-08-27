@@ -34,11 +34,13 @@ const langSelector = document.getElementById('lang-selector');
 let currentCurrency = "€";
 const currencyCodes = { "€": "EUR", "£": "GBP", "$": "USD", "₺": "TRY" };
 
+// 🔥 اضافه شدن دیکشنری فارسی 🔥
 const dictionary = {
     en: { invoice: "INVOICE", customer: "Customer", date: "Date:", seller: "Seller", desc: "Description", price: "Price", qty: "Quantity", total: "Total", subtotal: "TOTAL PRICE", discount: "Discount", grandtotal: "GRAND TOTAL", shipOpt: "Shipping Cost", cargoOpt: "Cargo Cost" },
     it: { invoice: "FATTURA", customer: "Cliente", date: "Data:", seller: "Azienda", desc: "Descrizione", price: "Prezzo", qty: "Quantità", total: "Totale", subtotal: "PREZZO TOTALE", discount: "Sconto", grandtotal: "TOTALE GENERALE", shipOpt: "Costo di Spedizione", cargoOpt: "Costo del Carico" },
     es: { invoice: "FACTURA", customer: "Cliente", date: "Fecha:", seller: "Empresa", desc: "Descripción", price: "Precio", qty: "Cantidad", total: "Total", subtotal: "PRECIO TOTAL", discount: "Descuento", grandtotal: "GRAN TOTAL", shipOpt: "Gastos de Envío", cargoOpt: "Costo de Carga" },
-    ar: { invoice: "فاتورة", customer: "العميل", date: "التاريخ:", seller: "الشركة", desc: "الوصف", price: "السعر", qty: "الكمية", total: "المجموع", subtotal: "السعر الإجمالي", discount: "خصم", grandtotal: "المجموع الإجمالي", shipOpt: "تكلفة الشحن", cargoOpt: "تكلفة الشحن" }
+    ar: { invoice: "فاتورة", customer: "العميل", date: "التاريخ:", seller: "الشركة", desc: "الوصف", price: "السعر", qty: "الكمية", total: "المجموع", subtotal: "السعر الإجمالي", discount: "خصم", grandtotal: "المجموع الإجمالي", shipOpt: "تكلفة الشحن", cargoOpt: "تكلفة الشحن" },
+    fa: { invoice: "فاکتور فروش", customer: "خریدار", date: "تاریخ:", seller: "فروشنده", desc: "شرح کالا", price: "مبلغ واحد", qty: "تعداد", total: "مبلغ کل", subtotal: "جمع مبلغ کالاها", discount: "تخفیف", grandtotal: "مبلغ نهایی فاکتور", shipOpt: "هزینه ارسال", cargoOpt: "هزینه کارگو" }
 };
 
 const urlParams = new URLSearchParams(window.location.search);
@@ -140,6 +142,15 @@ document.getElementById('add-country-btn').addEventListener('click', async () =>
     }
 });
 
+// 🔥 موتور تشخیص هوشمند انتخاب ایران 🔥
+countrySelect.addEventListener('change', (e) => {
+    if(e.target.value === "Iran") {
+        langSelector.value = "fa";
+        // اجرای دستی رویداد تغییر زبان تا فاکتور ترجمه شود
+        langSelector.dispatchEvent(new Event('change'));
+    }
+});
+
 function saveBaseState(e) { e.target.dataset.baseValue = e.target.value; e.target.dataset.baseCurrency = currentCurrency; }
 function saveBaseText(e) { e.target.dataset.baseText = e.target.value; }
 
@@ -228,9 +239,25 @@ langSelector.addEventListener('change', async (e) => {
     document.getElementById('lbl-discount').textContent = dict.discount;
     document.getElementById('lbl-grandtotal').textContent = dict.grandtotal;
 
+    // ترجمه گزینه‌های منوی شیپینگ (ارسال)
+    const shipSelect = document.getElementById('shipping-type');
+    if (shipSelect) {
+        shipSelect.options[0].text = dict.shipOpt;
+        shipSelect.options[1].text = dict.cargoOpt;
+    }
+
     const captureDiv = document.getElementById('invoice-capture');
-    if(lang === 'ar') { captureDiv.style.direction = 'rtl'; captureDiv.style.textAlign = 'right'; } 
-    else { captureDiv.style.direction = 'ltr'; captureDiv.style.textAlign = 'left'; }
+    // برای عربی و فارسی راست‌چین شود
+    if(lang === 'ar' || lang === 'fa') { 
+        captureDiv.style.direction = 'rtl'; 
+        captureDiv.style.textAlign = 'right'; 
+        // استثنا برای تاریخ تا همچنان میلادی بماند
+        document.getElementById('current-date').style.direction = 'ltr'; 
+        document.getElementById('current-date').style.display = 'inline-block';
+    } else { 
+        captureDiv.style.direction = 'ltr'; 
+        captureDiv.style.textAlign = 'left'; 
+    }
 
     const items = document.querySelectorAll('.item-name');
     if (lang === 'en') {
