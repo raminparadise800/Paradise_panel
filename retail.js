@@ -97,6 +97,16 @@ async function init() {
                     createRow(); createRow();
                 }
                 calculateTotals();
+
+                // 🔥 فیکس مشکل لود شدن حالت ویرایش برای ایران 🔥
+                if (data.customerCountry === "Iran") {
+                    langSelector.value = "fa";
+                    // یک تاخیر کوتاه می‌دهیم تا ردیف‌ها کاملاً ساخته شوند و بعد ترجمه اعمال شود
+                    setTimeout(() => {
+                        langSelector.dispatchEvent(new Event('change'));
+                    }, 300);
+                }
+
             } else {
                 alert("فاکتور مورد نظر پیدا نشد!");
             }
@@ -142,11 +152,10 @@ document.getElementById('add-country-btn').addEventListener('click', async () =>
     }
 });
 
-// 🔥 موتور تشخیص هوشمند انتخاب ایران 🔥
+// 🔥 موتور تشخیص هوشمند انتخاب ایران در ثبت جدید 🔥
 countrySelect.addEventListener('change', (e) => {
     if(e.target.value === "Iran") {
         langSelector.value = "fa";
-        // اجرای دستی رویداد تغییر زبان تا فاکتور ترجمه شود
         langSelector.dispatchEvent(new Event('change'));
     }
 });
@@ -394,9 +403,18 @@ saveExportBtn.addEventListener('click', async () => {
                 // دریافت آخرین مقداری که در صفحه دیده می‌شود
                 span.textContent = input.value || ''; 
                 span.style.cssText = 'font-weight:bold; font-size:14px;';
-                if(input.classList.contains('item-name')) {
+                
+                // 🔥 فیکس: قفل کردن جهت شماره تماس هنگام عکس گرفتن 🔥
+                if(input.id === 'cust-phone') {
+                    span.setAttribute('dir', 'ltr');
+                    span.style.display = 'inline-block';
                     span.style.textAlign = 'left';
-                } else if(input.id === 'shipping-cost' || input.id === 'discount') {
+                    span.style.unicodeBidi = 'plaintext';
+                } 
+                else if(input.classList.contains('item-name')) {
+                    span.style.textAlign = 'left';
+                } 
+                else if(input.id === 'shipping-cost' || input.id === 'discount') {
                     // برای شیپینگ و تخفیف عرض ثابت می‌دهیم تا ساختار به هم نریزد
                     span.style.display = 'inline-block';
                     span.style.width = '90px';
