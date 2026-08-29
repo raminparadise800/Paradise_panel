@@ -57,7 +57,8 @@
                     <span id="lbl-customer" style="text-transform: uppercase; font-weight: bold; font-size: 15px; color: #333;">Customer</span>
                 </div>
                 <div class="meta-row">
-                    <input type="text" id="cust-phone" placeholder="Phone (e.g. 0039...) * (اجباری)" required style="border-left: 3px solid #e74c3c;">
+                    <!-- ویژگی dir="ltr" اضافه شد تا شماره تماس در فاکتور فارسی برعکس نشود -->
+                    <input type="text" id="cust-phone" dir="ltr" placeholder="Phone (e.g. 0039...) * (اجباری)" required style="border-left: 3px solid #e74c3c; text-align: left;">
                 </div>
                 <div class="meta-row">
                     <input type="text" id="cust-name" placeholder="Name (اختیاری)">
@@ -69,7 +70,7 @@
                         <option value="Spain">Spain (اسپانیا)</option>
                         <option value="UK">UK (انگلیس)</option>
                         <option value="USA">USA (آمریکا)</option>
-                        <option value="Iran">Iran (ایران)</option> <!-- ایران جایگزین بلژیک شد -->
+                        <option value="Iran">Iran (ایران)</option>
                     </select>
                     <button id="add-country-btn" class="no-print" style="margin-left: 5px; padding: 5px 10px; background: #3498db; color: white; border: none; border-radius: 3px; cursor: pointer;">+</button>
                 </div>
@@ -81,7 +82,7 @@
             <div class="meta-right">
                 <div class="meta-row" style="margin-bottom: 5px;">
                     <span id="lbl-date" style="width: 85px; font-weight: bold; color: #333;">Date:</span>
-                    <span id="current-date" style="font-family: Tahoma, sans-serif;"></span> <!-- جلوگیری از تغییر استایل تاریخ -->
+                    <span id="current-date" style="font-family: Tahoma, sans-serif;"></span>
                 </div>
                 <div class="meta-row no-print" style="margin-bottom: 5px;">
                     <span style="width: 85px; font-weight: bold; color: #333;">Currency:</span>
@@ -99,7 +100,7 @@
                         <option value="it">Italian</option>
                         <option value="es">Spanish</option>
                         <option value="ar">Arabic (عربي)</option>
-                        <option value="fa">Persian (فارسی)</option> <!-- زبان فارسی اضافه شد -->
+                        <option value="fa">Persian (فارسی)</option>
                     </select>
                 </div>
                 <div style="margin-top: 5px;">
