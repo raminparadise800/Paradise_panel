@@ -1,7 +1,7 @@
 // history.js
 import { db, auth } from './firebase-config.js';
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-auth.js";
-import { collection, getDocs, doc, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
+import { collection, getDocs, doc, deleteDoc, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
 
 // 🔴🔴🔴 ایمیل مدیریت خود را بنویس 🔴🔴🔴
 const ADMIN_EMAIL = "ramin.paradise800@gmail.com"; 
@@ -99,7 +99,7 @@ function renderTable(data) {
         historyBody.appendChild(tr);
     });
 
-    // رویداد تغییر وضعیت فاکتور
+    // رویداد تغییر وضعیت فاکتور (همراه با ثبت تاریخ دقیق نهایی شدن)
     document.querySelectorAll('.status-select').forEach(select => {
         select.addEventListener('change', async (e) => {
             const newStatus = e.target.value;
@@ -109,9 +109,19 @@ function renderTable(data) {
             else e.target.classList.remove('status-نهایی');
 
             try {
-                await updateDoc(doc(db, colName, docId), { status: newStatus });
+                const updatePayload = { status: newStatus };
+                if (newStatus === 'نهایی') {
+                    updatePayload.finalizedAt = serverTimestamp();
+                }
+
+                await updateDoc(doc(db, colName, docId), updatePayload);
                 const invIndex = allInvoices.findIndex(i => i.id === docId && i.collectionName === colName);
-                if(invIndex > -1) allInvoices[invIndex].status = newStatus;
+                if(invIndex > -1) {
+                    allInvoices[invIndex].status = newStatus;
+                    if (newStatus === 'نهایی') {
+                        allInvoices[invIndex].finalizedAt = { toMillis: () => Date.now(), toDate: () => new Date() };
+                    }
+                }
             } catch (error) { alert("خطا در تغییر وضعیت"); }
         });
     });
