@@ -33,13 +33,13 @@ const langSelector = document.getElementById('lang-selector');
 let currentCurrency = "€";
 const currencyCodes = { "€": "EUR", "£": "GBP", "$": "USD", "₺": "TRY" };
 
-// 🔥 اضافه شدن دیکشنری فارسی 🔥
+// 🔥 دیکشنری آپدیت شده با عبارت ارسال تا کارگو 🔥
 const dictionary = {
-    en: { invoice: "INVOICE", customer: "Customer", date: "Date:", seller: "Seller", desc: "Description", price: "Price", qty: "Quantity", total: "Total", subtotal: "TOTAL PRICE", grandtotal: "GRAND TOTAL", shipOpt: "Shipping Cost", cargoOpt: "Cargo Cost" },
-    it: { invoice: "FATTURA", customer: "Cliente", date: "Data:", seller: "Azienda", desc: "Descrizione", price: "Prezzo", qty: "Quantità", total: "Totale", subtotal: "PREZZO TOTALE", grandtotal: "TOTALE GENERALE", shipOpt: "Costo di Spedizione", cargoOpt: "Costo del Carico" },
-    es: { invoice: "FACTURA", customer: "Cliente", date: "Fecha:", seller: "Empresa", desc: "Descripción", price: "Precio", qty: "Cantidad", total: "Total", subtotal: "PRECIO TOTAL", grandtotal: "GRAN TOTAL", shipOpt: "Gastos de Envío", cargoOpt: "Costo de Carga" },
-    ar: { invoice: "فاتورة", customer: "العميل", date: "التاريخ:", seller: "الشركة", desc: "الوصف", price: "السعر", qty: "الكمية", total: "المجموع", subtotal: "السعر الإجمالي", grandtotal: "المجموع الإجمالي", shipOpt: "تكلفة الشحن", cargoOpt: "تكلفة الشحن" },
-    fa: { invoice: "فاکتور فروش", customer: "خریدار", date: "تاریخ:", seller: "فروشنده", desc: "شرح کالا", price: "مبلغ واحد", qty: "تعداد", total: "مبلغ کل", subtotal: "جمع مبلغ کالاها", grandtotal: "مبلغ نهایی فاکتور", shipOpt: "هزینه ارسال", cargoOpt: "هزینه کارگو" }
+    en: { invoice: "INVOICE", customer: "Customer", date: "Date:", seller: "Seller", desc: "Description", price: "Price", qty: "Quantity", total: "Total", subtotal: "TOTAL PRICE", grandtotal: "GRAND TOTAL", shipOpt: "Shipping Cost", cargoOpt: "Delivery to Cargo" },
+    it: { invoice: "FATTURA", customer: "Cliente", date: "Data:", seller: "Azienda", desc: "Descrizione", price: "Prezzo", qty: "Quantità", total: "Totale", subtotal: "PREZZO TOTALE", grandtotal: "TOTALE GENERALE", shipOpt: "Costo di Spedizione", cargoOpt: "Consegna al Cargo" },
+    es: { invoice: "FACTURA", customer: "Cliente", date: "Fecha:", seller: "Empresa", desc: "Descripción", price: "Precio", qty: "Cantidad", total: "Total", subtotal: "PRECIO TOTAL", grandtotal: "GRAN TOTAL", shipOpt: "Gastos de Envío", cargoOpt: "Entrega al Cargo" },
+    ar: { invoice: "فاتورة", customer: "العميل", date: "التاريخ:", seller: "الشركة", desc: "الوصف", price: "السعر", qty: "الكمية", total: "المجموع", subtotal: "السعر الإجمالي", grandtotal: "المجموع الإجمالي", shipOpt: "تكلفة الشحن", cargoOpt: "التوصيل إلى مكتب الشحن" },
+    fa: { invoice: "فاکتور فروش", customer: "خریدار", date: "تاریخ:", seller: "فروشنده", desc: "شرح کالا", price: "مبلغ واحد", qty: "تعداد", total: "مبلغ کل", subtotal: "جمع مبلغ کالاها", grandtotal: "مبلغ نهایی فاکتور", shipOpt: "هزینه ارسال", cargoOpt: "هزینه ارسال تا کارگو" }
 };
 
 const urlParams = new URLSearchParams(window.location.search);
