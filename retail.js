@@ -25,7 +25,6 @@ const addRowBtn = document.getElementById('add-row-btn');
 const saveExportBtn = document.getElementById('save-export-btn'); 
 const shareBtn = document.getElementById('share-btn');
 const shippingInput = document.getElementById('shipping-cost');
-const discountInput = document.getElementById('discount');
 const sellerSelect = document.getElementById('salesperson-select');
 const invoiceTypeSelect = document.getElementById('invoice-type');
 const countrySelect = document.getElementById('cust-country');
@@ -36,11 +35,11 @@ const currencyCodes = { "€": "EUR", "£": "GBP", "$": "USD", "₺": "TRY" };
 
 // 🔥 اضافه شدن دیکشنری فارسی 🔥
 const dictionary = {
-    en: { invoice: "INVOICE", customer: "Customer", date: "Date:", seller: "Seller", desc: "Description", price: "Price", qty: "Quantity", total: "Total", subtotal: "TOTAL PRICE", discount: "Discount", grandtotal: "GRAND TOTAL", shipOpt: "Shipping Cost", cargoOpt: "Cargo Cost" },
-    it: { invoice: "FATTURA", customer: "Cliente", date: "Data:", seller: "Azienda", desc: "Descrizione", price: "Prezzo", qty: "Quantità", total: "Totale", subtotal: "PREZZO TOTALE", discount: "Sconto", grandtotal: "TOTALE GENERALE", shipOpt: "Costo di Spedizione", cargoOpt: "Costo del Carico" },
-    es: { invoice: "FACTURA", customer: "Cliente", date: "Fecha:", seller: "Empresa", desc: "Descripción", price: "Precio", qty: "Cantidad", total: "Total", subtotal: "PRECIO TOTAL", discount: "Descuento", grandtotal: "GRAN TOTAL", shipOpt: "Gastos de Envío", cargoOpt: "Costo de Carga" },
-    ar: { invoice: "فاتورة", customer: "العميل", date: "التاريخ:", seller: "الشركة", desc: "الوصف", price: "السعر", qty: "الكمية", total: "المجموع", subtotal: "السعر الإجمالي", discount: "خصم", grandtotal: "المجموع الإجمالي", shipOpt: "تكلفة الشحن", cargoOpt: "تكلفة الشحن" },
-    fa: { invoice: "فاکتور فروش", customer: "خریدار", date: "تاریخ:", seller: "فروشنده", desc: "شرح کالا", price: "مبلغ واحد", qty: "تعداد", total: "مبلغ کل", subtotal: "جمع مبلغ کالاها", discount: "تخفیف", grandtotal: "مبلغ نهایی فاکتور", shipOpt: "هزینه ارسال", cargoOpt: "هزینه کارگو" }
+    en: { invoice: "INVOICE", customer: "Customer", date: "Date:", seller: "Seller", desc: "Description", price: "Price", qty: "Quantity", total: "Total", subtotal: "TOTAL PRICE", grandtotal: "GRAND TOTAL", shipOpt: "Shipping Cost", cargoOpt: "Cargo Cost" },
+    it: { invoice: "FATTURA", customer: "Cliente", date: "Data:", seller: "Azienda", desc: "Descrizione", price: "Prezzo", qty: "Quantità", total: "Totale", subtotal: "PREZZO TOTALE", grandtotal: "TOTALE GENERALE", shipOpt: "Costo di Spedizione", cargoOpt: "Costo del Carico" },
+    es: { invoice: "FACTURA", customer: "Cliente", date: "Fecha:", seller: "Empresa", desc: "Descripción", price: "Precio", qty: "Cantidad", total: "Total", subtotal: "PRECIO TOTAL", grandtotal: "GRAN TOTAL", shipOpt: "Gastos de Envío", cargoOpt: "Costo de Carga" },
+    ar: { invoice: "فاتورة", customer: "العميل", date: "التاريخ:", seller: "الشركة", desc: "الوصف", price: "السعر", qty: "الكمية", total: "المجموع", subtotal: "السعر الإجمالي", grandtotal: "المجموع الإجمالي", shipOpt: "تكلفة الشحن", cargoOpt: "تكلفة الشحن" },
+    fa: { invoice: "فاکتور فروش", customer: "خریدار", date: "تاریخ:", seller: "فروشنده", desc: "شرح کالا", price: "مبلغ واحد", qty: "تعداد", total: "مبلغ کل", subtotal: "جمع مبلغ کالاها", grandtotal: "مبلغ نهایی فاکتور", shipOpt: "هزینه ارسال", cargoOpt: "هزینه کارگو" }
 };
 
 const urlParams = new URLSearchParams(window.location.search);
@@ -77,7 +76,8 @@ async function init() {
                 document.querySelectorAll('.cur-sym').forEach(el => el.textContent = currentCurrency);
 
                 shippingInput.value = data.shippingCost || 0;
-                discountInput.value = data.discount || 0;
+                shippingInput.dataset.baseValue = data.shippingCost || 0;
+                shippingInput.dataset.baseCurrency = currentCurrency;
 
                 invoiceBody.innerHTML = ''; 
                 
@@ -101,7 +101,6 @@ async function init() {
                 // 🔥 فیکس مشکل لود شدن حالت ویرایش برای ایران 🔥
                 if (data.customerCountry === "Iran") {
                     langSelector.value = "fa";
-                    // یک تاخیر کوتاه می‌دهیم تا ردیف‌ها کاملاً ساخته شوند و بعد ترجمه اعمال شود
                     setTimeout(() => {
                         langSelector.dispatchEvent(new Event('change'));
                     }, 300);
@@ -165,8 +164,6 @@ function saveBaseText(e) { e.target.dataset.baseText = e.target.value; }
 
 shippingInput.dataset.baseValue = 0; shippingInput.dataset.baseCurrency = currentCurrency;
 shippingInput.addEventListener('input', saveBaseState);
-discountInput.dataset.baseValue = 0; discountInput.dataset.baseCurrency = currentCurrency;
-discountInput.addEventListener('input', saveBaseState);
 
 function calculateTotals() {
     let subTotal = 0; 
@@ -188,8 +185,7 @@ function calculateTotals() {
     });
 
     const shipping = parseFloat(shippingInput.value) || 0;
-    const discount = parseFloat(discountInput.value) || 0;
-    const grandTotal = (subTotal + shipping) - discount;
+    const grandTotal = subTotal + shipping;
 
     document.getElementById('sub-total').textContent = subTotal.toFixed(2);
     document.getElementById('grand-total').textContent = grandTotal.toFixed(2);
@@ -198,7 +194,6 @@ function calculateTotals() {
 }
 
 shippingInput.addEventListener('input', calculateTotals);
-discountInput.addEventListener('input', calculateTotals);
 
 function createRow() {
     const tr = document.createElement('tr');
@@ -245,7 +240,6 @@ langSelector.addEventListener('change', async (e) => {
     document.getElementById('lbl-qty').textContent = dict.qty;
     document.getElementById('lbl-total').textContent = dict.total;
     document.getElementById('lbl-subtotal').textContent = dict.subtotal;
-    document.getElementById('lbl-discount').textContent = dict.discount;
     document.getElementById('lbl-grandtotal').textContent = dict.grandtotal;
 
     // ترجمه گزینه‌های منوی شیپینگ (ارسال)
@@ -322,7 +316,6 @@ document.getElementById('currency-selector').addEventListener('change', async (e
         document.querySelectorAll('.item-price').forEach(input => convertInput(input));
         document.querySelectorAll('.item-ship-discount').forEach(input => convertInput(input));
         convertInput(shippingInput); 
-        convertInput(discountInput);
 
         currentCurrency = newCurrency;
         document.querySelectorAll('.cur-sym').forEach(el => el.textContent = currentCurrency);
@@ -372,7 +365,7 @@ saveExportBtn.addEventListener('click', async () => {
         currency: currentCurrency, items: items, 
         totalWeight: totalWeight, 
         totalShipDiscountGuide: totalShipDiscount,
-        shippingCost: parseFloat(shippingInput.value) || 0, discount: parseFloat(discountInput.value) || 0, 
+        shippingCost: parseFloat(shippingInput.value) || 0, discount: 0, 
         grandTotal: parseFloat(document.getElementById('grand-total').textContent)
     };
 
@@ -400,7 +393,6 @@ saveExportBtn.addEventListener('click', async () => {
         inputs.forEach(input => {
             if(!input.classList.contains('no-print') && input.type !== 'hidden') {
                 const span = document.createElement('span');
-                // دریافت آخرین مقداری که در صفحه دیده می‌شود
                 span.textContent = input.value || ''; 
                 span.style.cssText = 'font-weight:bold; font-size:14px;';
                 
@@ -414,8 +406,7 @@ saveExportBtn.addEventListener('click', async () => {
                 else if(input.classList.contains('item-name')) {
                     span.style.textAlign = 'left';
                 } 
-                else if(input.id === 'shipping-cost' || input.id === 'discount') {
-                    // برای شیپینگ و تخفیف عرض ثابت می‌دهیم تا ساختار به هم نریزد
+                else if(input.id === 'shipping-cost') {
                     span.style.display = 'inline-block';
                     span.style.width = '90px';
                     span.style.textAlign = 'center';
