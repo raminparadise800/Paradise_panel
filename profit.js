@@ -1,7 +1,7 @@
 // profit.js
 import { db, auth } from './firebase-config.js';
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-auth.js";
-import { collection, getDocs, doc, updateDoc, query, where } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
+import { collection, getDocs, doc, updateDoc, query, where, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
 
 // 🔴🔴🔴 ایمیل مدیریت
 const ADMIN_EMAIL = "ramin.paradise800@gmail.com"; 
@@ -9,7 +9,8 @@ const ADMIN_EMAIL = "ramin.paradise800@gmail.com";
 let allInvoicesRaw = []; 
 let filteredAllInvoices = []; 
 let filteredFinalInvoices = []; 
-let currentCalcFilter = 'pending'; 
+let currentCalcFilter = 'pending'; // 'pending' | 'completed' | 'initial'
+let calcSearchQuery = '';
 let currentTrendView = 'monthly'; 
 // ذخیره وضعیت انتخابگرهای داشبورد کلان برای جلوگیری از ریست شدن هنگام تغییر تاریخ
 let currentCountryFilter = 'total';
@@ -17,6 +18,9 @@ let currentSourceFilter = 'total';
 
 let exchangeRates = null;
 const currencyCodes = { "€": "EUR", "£": "GBP", "$": "USD", "₺": "TRY" };
+
+const statusLabels = ["ثبت اولیه", "نهایی", "کنسل شده"];
+const baseLeadSources = ["اینستاگرام", "گوگل", "تلگرام", "تیک‌تاک", "یوتیوب", "قدیمی", "معرفی"];
 
 const tabBtns = document.querySelectorAll('.tab-btn');
 const tabContents = document.querySelectorAll('.tab-content');
@@ -26,15 +30,107 @@ const dateFrom = document.getElementById('date-from');
 const dateTo = document.getElementById('date-to');
 const applyDateBtn = document.getElementById('apply-date-btn');
 
+// 🔥 تابع هوشمند تشخیص تاریخ موثر فاکتور (تاریخ نهایی شدن برای جدیدها، تاریخ صدور برای قدیمی‌ها) 🔥
+function getEffectiveDate(inv) {
+    if (inv.status === 'نهایی' && inv.finalizedAt) {
+        if (typeof inv.finalizedAt.toDate === 'function') return inv.finalizedAt.toDate();
+        if (inv.finalizedAt instanceof Date) return inv.finalizedAt;
+        if (typeof inv.finalizedAt.toMillis === 'function') return new Date(inv.finalizedAt.toMillis());
+    }
+    if (inv.timestamp) {
+        if (typeof inv.timestamp.toDate === 'function') return inv.timestamp.toDate();
+        if (inv.timestamp instanceof Date) return inv.timestamp;
+        if (typeof inv.timestamp.toMillis === 'function') return new Date(inv.timestamp.toMillis());
+    }
+    return null;
+}
+
+function getEffectiveMillis(inv) {
+    const d = getEffectiveDate(inv);
+    return d ? d.getTime() : 0;
+}
+
 onAuthStateChanged(auth, (user) => {
     if (user && user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
         document.body.style.opacity = "1";
+        setupCalculatorToolbar();
         initDashboard();
     } else {
         alert("دسترسی غیرمجاز!");
         window.location.href = "retail.html";
     }
 });
+
+// ساخت خودکار کادر جستجو و دکمه پیش‌فاکتورها در بخش محاسبه سود
+function setupCalculatorToolbar() {
+    const pendingBtn = document.getElementById('filter-pending');
+    const completedBtn = document.getElementById('filter-completed');
+    const calcList = document.getElementById('calculator-list');
+
+    if (pendingBtn && completedBtn && !document.getElementById('filter-initial')) {
+        const initialBtn = document.createElement('button');
+        initialBtn.id = 'filter-initial';
+        initialBtn.className = completedBtn.className;
+        initialBtn.textContent = '📝 پیش‌فاکتورها (ثبت اولیه)';
+        initialBtn.style.marginRight = '8px';
+        completedBtn.parentNode.appendChild(initialBtn);
+
+        initialBtn.addEventListener('click', () => {
+            currentCalcFilter = 'initial';
+            updateCalcFilterButtons();
+            renderCalculator();
+        });
+    }
+
+    if (calcList && !document.getElementById('calc-search-box')) {
+        const searchWrapper = document.createElement('div');
+        searchWrapper.style.cssText = 'margin: 15px 0; display: flex; gap: 10px; align-items: center; background: #fff; padding: 12px 15px; border-radius: 8px; border: 1px solid #dcdde1; box-shadow: 0 2px 6px rgba(0,0,0,0.04);';
+        searchWrapper.innerHTML = `
+            <span style="font-size: 18px;">🔍</span>
+            <input type="text" id="calc-search-box" placeholder="جستجوی شماره فاکتور (مثلاً INV-123456)، نام مشتری یا شماره تماس در کل فاکتورها..." style="flex: 1; border: none; outline: none; font-size: 14px; font-family: inherit;">
+            <button id="calc-search-clear" style="display: none; background: #e74c3c; color: #fff; border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px;">پاک کردن ✖</button>
+        `;
+        calcList.parentNode.insertBefore(searchWrapper, calcList);
+
+        const searchInput = document.getElementById('calc-search-box');
+        const clearBtn = document.getElementById('calc-search-clear');
+
+        searchInput.addEventListener('input', (e) => {
+            calcSearchQuery = e.target.value.trim().toLowerCase();
+            clearBtn.style.display = calcSearchQuery ? 'inline-block' : 'none';
+            renderCalculator();
+        });
+
+        clearBtn.addEventListener('click', () => {
+            searchInput.value = '';
+            calcSearchQuery = '';
+            clearBtn.style.display = 'none';
+            renderCalculator();
+        });
+    }
+
+    updateCalcFilterButtons();
+}
+
+function updateCalcFilterButtons() {
+    const btnMap = {
+        'pending': document.getElementById('filter-pending'),
+        'completed': document.getElementById('filter-completed'),
+        'initial': document.getElementById('filter-initial')
+    };
+    Object.entries(btnMap).forEach(([key, btn]) => {
+        if (!btn) return;
+        if (key === currentCalcFilter) {
+            btn.style.backgroundColor = '#2980b9';
+            btn.style.color = '#fff';
+            btn.style.fontWeight = 'bold';
+        } else {
+            btn.style.backgroundColor = '#ecf0f1';
+            btn.style.color = '#2c3e50';
+            btn.style.fontWeight = 'normal';
+        }
+    });
+}
 
 async function initDashboard() {
     try {
@@ -68,8 +164,16 @@ tabBtns.forEach(btn => {
     });
 });
 
-document.getElementById('filter-pending').addEventListener('click', () => { currentCalcFilter = 'pending'; renderCalculator(); });
-document.getElementById('filter-completed').addEventListener('click', () => { currentCalcFilter = 'completed'; renderCalculator(); });
+document.getElementById('filter-pending').addEventListener('click', () => { 
+    currentCalcFilter = 'pending'; 
+    updateCalcFilterButtons();
+    renderCalculator(); 
+});
+document.getElementById('filter-completed').addEventListener('click', () => { 
+    currentCalcFilter = 'completed'; 
+    updateCalcFilterButtons();
+    renderCalculator(); 
+});
 
 async function loadData() {
     try {
@@ -104,8 +208,8 @@ function applyDateFilter() {
     }
 
     filteredAllInvoices = allInvoicesRaw.filter(inv => {
-        if (!inv.timestamp) return true;
-        const invDate = inv.timestamp.toDate();
+        const invDate = getEffectiveDate(inv);
+        if (!invDate) return true;
         return invDate >= startDate && invDate <= endDate;
     });
 
@@ -125,7 +229,6 @@ applyDateBtn.addEventListener('click', applyDateFilter);
 function updateDashboard() {
     let retVol = 0, whoVol = 0, retProf = 0, whoProf = 0;
     
-    // تفکیک متغیرهای کشور و منبع بازاریابی در سه حالت: تک، عمده، مجموع (شامل حجم یورو و تعداد خرید)
     let countrySalesRetail = {};
     let countrySalesWholesale = {};
     let countrySalesTotal = {};
@@ -134,7 +237,6 @@ function updateDashboard() {
     let sourceSalesWholesale = {};
     let sourceSalesTotal = {};
 
-    // موتور شمارنده هوشمند برای حجم و تعداد
     const addData = (obj, key, amount) => {
         if(!obj[key]) obj[key] = { vol: 0, count: 0 };
         obj[key].vol += amount;
@@ -165,19 +267,16 @@ function updateDashboard() {
         addData(sourceSalesTotal, source, grandTotalEUR);
     });
 
-    // آپدیت ۴ کارت قدیمی
     document.getElementById('dash-retail-vol').textContent = `${retVol.toFixed(2)} €`;
     document.getElementById('dash-wholesale-vol').textContent = `${whoVol.toFixed(2)} €`;
     document.getElementById('dash-retail-profit').textContent = `${retProf.toFixed(2)} €`;
     document.getElementById('dash-wholesale-profit').textContent = `${whoProf.toFixed(2)} €`;
 
-    // پاک‌سازی کارت تکی قدیمی در صورت وجود
     const oldTotalProfitCard = document.getElementById('dash-total-net-profit');
     if (oldTotalProfitCard && oldTotalProfitCard.closest('.summary-card')) {
         oldTotalProfitCard.closest('.summary-card').remove();
     }
 
-    // تزریق ردیف جدید: "مجموع کل حجم فروش" و "مجموع کل سود خالص"
     let totalCardsContainer = document.getElementById('dynamic-total-cards');
     if (!totalCardsContainer) {
         const topCountriesContainer = document.getElementById('top-countries');
@@ -202,7 +301,6 @@ function updateDashboard() {
         `;
     }
 
-    // موتور سازنده پنل‌های یکپارچه و تعاملی (Toggle Panel) با قابلیت نمایش تعداد
     const renderTogglePanel = (container, title, icon, filterName, currentFilter, dataRetail, dataWholesale, dataTotal) => {
         container.style.cssText = 'width:100%; margin-bottom:20px;'; 
         container.innerHTML = `
@@ -285,13 +383,11 @@ function updateDashboard() {
         updateContent(currentFilter);
     };
 
-    // اعمال موتور یکپارچه روی کشورها
     const tcDiv = document.getElementById('top-countries');
     if (tcDiv) {
         renderTogglePanel(tcDiv, 'سهم کشورها از بازار جهانی', '🌍', 'country-filter', currentCountryFilter, countrySalesRetail, countrySalesWholesale, countrySalesTotal);
     }
 
-    // اعمال موتور یکپارچه روی منابع بازاریابی
     let sourcesDiv = document.getElementById('top-sources');
     if (!sourcesDiv && tcDiv && tcDiv.parentNode) {
         sourcesDiv = document.createElement('div');
@@ -307,7 +403,7 @@ function updateDashboard() {
 }
 
 // ----------------------------------------------------
-// نمودار روند زمانی (گوگل ادز) - مخصوص داشبورد کلان
+// نمودار روند زمانی بهینه‌شده برای موبایل و دسکتاپ
 // ----------------------------------------------------
 let trendChartInstance = null;
 
@@ -323,14 +419,17 @@ function drawTrendChart() {
         trendContainer.id = 'historical-trend-container';
         trendContainer.style.cssText = 'width: 100%; background: #fff; padding: 25px; border: 1px solid #eee; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-top: 30px; text-align: center;';
         trendContainer.innerHTML = `
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; direction: rtl;">
-                <h4 style="color: #2c3e50; font-size: 16px; font-weight: bold; margin: 0;">📈 بنچمارک تحلیل روند کلان فروش و سود خالص (Google Ads Style)</h4>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px; direction: rtl;">
+                <div style="text-align: right;">
+                    <h4 style="color: #2c3e50; font-size: 16px; font-weight: bold; margin: 0;">📈 بنچمارک تحلیل روند کلان فروش و سود خالص</h4>
+                    <span style="font-size: 11px; color: #7f8c8d;">💡 روی هر ستون لمس کنید یا انگشت خود را بکشید تا جزئیات کامل آن ماه را ببینید</span>
+                </div>
                 <div style="display: flex; gap: 8px; align-items: center;">
                     <button id="trend-monthly-btn" class="btn btn-small btn-blue" style="padding: 6px 14px; font-size: 12px;"> نمای ماهانه</button>
                     <button id="trend-yearly-btn" class="btn btn-small btn-gray" style="padding: 6px 14px; font-size: 12px; background-color: #7f8c8d;"> نمای سالانه</button>
                 </div>
             </div>
-            <div style="position: relative; height: 340px; width: 100%;">
+            <div style="position: relative; height: 370px; width: 100%;">
                 <canvas id="trend-linear-chart"></canvas>
             </div>
         `;
@@ -356,7 +455,7 @@ function drawTrendChart() {
     let trendGroups = {};
     allInvoicesRaw.forEach(inv => {
         if (inv.status !== 'نهایی') return;
-        let dateObj = inv.timestamp ? inv.timestamp.toDate() : null;
+        let dateObj = getEffectiveDate(inv);
         if (!dateObj) return;
 
         let key = "";
@@ -379,8 +478,8 @@ function drawTrendChart() {
     let profitTimelineData = [];
 
     sortedTimelineKeys.forEach(k => {
-        salesTimelineData.push(trendGroups[k].sales.toFixed(2));
-        profitTimelineData.push(trendGroups[k].profit.toFixed(2));
+        salesTimelineData.push(Number(trendGroups[k].sales.toFixed(2)));
+        profitTimelineData.push(Number(trendGroups[k].profit.toFixed(2)));
     });
 
     if (typeof Chart === 'undefined') {
@@ -397,6 +496,53 @@ function renderTrendChartCanvas(labels, salesData, profitData) {
     const trendCtx = document.getElementById('trend-linear-chart').getContext('2d');
     if (trendChartInstance) trendChartInstance.destroy();
 
+    // پلاگین اختصاصی برای نوشتن اعداد خوانا و مرتب روی نمودار
+    const smartLabelsPlugin = {
+        id: 'smartLabelsPlugin',
+        afterDatasetsDraw(chart) {
+            const { ctx } = chart;
+            ctx.save();
+            ctx.font = 'bold 11px Tahoma';
+            ctx.textAlign = 'center';
+
+            // نمایش اعداد فروش روی میله‌ها
+            const barMeta = chart.getDatasetMeta(0);
+            barMeta.data.forEach((bar, index) => {
+                const val = salesData[index];
+                if (val > 0) {
+                    const text = Math.round(val).toLocaleString('en-US') + '€';
+                    ctx.fillStyle = '#1f618d';
+                    ctx.fillText(text, bar.x, bar.y - 6);
+                }
+            });
+
+            // نمایش اعداد سود خالص روی نقاط خط سبز با کادر سفید خوانا
+            const lineMeta = chart.getDatasetMeta(1);
+            lineMeta.data.forEach((point, index) => {
+                const val = profitData[index];
+                if (val > 0) {
+                    const text = Math.round(val).toLocaleString('en-US') + '€';
+                    const textWidth = ctx.measureText(text).width;
+                    const boxX = point.x - (textWidth / 2) - 4;
+                    const boxY = point.y - 24;
+
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
+                    ctx.strokeStyle = '#27ae60';
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    ctx.roundRect ? ctx.roundRect(boxX, boxY, textWidth + 8, 16, 4) : ctx.rect(boxX, boxY, textWidth + 8, 16);
+                    ctx.fill();
+                    ctx.stroke();
+
+                    ctx.fillStyle = '#1e8449';
+                    ctx.fillText(text, point.x, boxY + 12);
+                }
+            });
+
+            ctx.restore();
+        }
+    };
+
     trendChartInstance = new Chart(trendCtx, {
         type: 'bar',
         data: {
@@ -405,36 +551,50 @@ function renderTrendChartCanvas(labels, salesData, profitData) {
                 {
                     label: '🔵 مجموع حجم کل فروش (€)',
                     data: salesData,
-                    backgroundColor: 'rgba(52, 152, 219, 0.7)',
-                    borderColor: '#3498db',
+                    backgroundColor: 'rgba(52, 152, 219, 0.65)',
+                    borderColor: '#2980b9',
                     borderWidth: 2,
-                    borderRadius: 5,
-                    yAxisID: 'y'
+                    borderRadius: 6,
+                    yAxisID: 'y',
+                    order: 2
                 },
                 {
                     label: '🟢 مجموع کل سود خالص (€)',
                     data: profitData,
-                    backgroundColor: 'transparent',
-                    borderColor: '#2ecc71',
-                    borderWidth: 4,
-                    pointBackgroundColor: '#27ae60',
+                    backgroundColor: '#2ecc71',
+                    borderColor: '#27ae60',
+                    borderWidth: 3,
+                    pointBackgroundColor: '#fff',
+                    pointBorderColor: '#27ae60',
+                    pointBorderWidth: 3,
                     pointRadius: 6,
-                    pointHoverRadius: 8,
+                    pointHoverRadius: 9,
+                    pointHitRadius: 30, // افزایش محدوده لمس در موبایل
                     type: 'line',
                     tension: 0.3,
-                    yAxisID: 'y1'
+                    yAxisID: 'y1',
+                    order: 1
                 }
             ]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            layout: {
+                padding: { top: 25 }
+            },
+            // 🔥 فعال‌سازی حالت لمس مغناطیسی ستونی برای موبایل 🔥
+            interaction: {
+                mode: 'index',
+                intersect: false
+            },
             scales: {
-                x: { grid: { display: false }, ticks: { font: { family: 'Tahoma', size: 11 } } },
+                x: { grid: { display: false }, ticks: { font: { family: 'Tahoma', size: 11, weight: 'bold' } } },
                 y: {
                     type: 'linear',
                     display: true,
                     position: 'right',
+                    grace: '15%',
                     title: { display: true, text: 'حجم کل فروش (€)', font: { family: 'Tahoma', weight: 'bold' } },
                     ticks: { font: { family: 'Tahoma' } }
                 },
@@ -442,6 +602,7 @@ function renderTrendChartCanvas(labels, salesData, profitData) {
                     type: 'linear',
                     display: true,
                     position: 'left',
+                    grace: '20%',
                     grid: { drawOnChartArea: false },
                     title: { display: true, text: 'سود خالص واقعی (€)', font: { family: 'Tahoma', weight: 'bold' } },
                     ticks: { font: { family: 'Tahoma' } }
@@ -449,9 +610,20 @@ function renderTrendChartCanvas(labels, salesData, profitData) {
             },
             plugins: {
                 legend: { position: 'top', labels: { font: { family: 'Tahoma', weight: 'bold', size: 12 }, padding: 15 } },
-                tooltip: { bodyFont: { family: 'Tahoma' }, titleFont: { family: 'Tahoma' } }
+                tooltip: {
+                    backgroundColor: 'rgba(44, 62, 80, 0.95)',
+                    padding: 12,
+                    bodyFont: { family: 'Tahoma', size: 13 },
+                    titleFont: { family: 'Tahoma', size: 14, weight: 'bold' },
+                    callbacks: {
+                        label: function(context) {
+                            return ` ${context.dataset.label}: ${Number(context.raw).toFixed(2)} €`;
+                        }
+                    }
+                }
             }
-        }
+        },
+        plugins: [smartLabelsPlugin]
     });
 }
 
@@ -600,15 +772,45 @@ function executePieCharts(labels, retData, whoData) {
 }
 
 // ----------------------------------------------------
-
+// بخش محاسبه سود، جستجوی سراسری، نهایی‌سازی و ثبت منبع
+// ----------------------------------------------------
 function renderCalculator() {
     const calcList = document.getElementById('calculator-list');
     calcList.innerHTML = '';
 
-    const listToShow = filteredFinalInvoices.filter(inv => {
-        const isCalculated = inv.isProfitCalculated === true;
-        return currentCalcFilter === 'pending' ? !isCalculated : isCalculated;
+    // استخراج تمام منابع بازاریابی ثبت‌شده در سیستم
+    const dynamicSources = new Set(baseLeadSources);
+    allInvoicesRaw.forEach(inv => {
+        if (inv.leadSource && inv.leadSource.trim() !== '') {
+            dynamicSources.add(inv.leadSource);
+        }
     });
+    const finalSourcesList = Array.from(dynamicSources);
+
+    let listToShow = [];
+
+    // اگر کاربر عبارتی در باکس جستجو وارد کرده باشد، در کل دیتابیس بدون محدودیت تاریخ بگردد
+    if (calcSearchQuery !== '') {
+        listToShow = allInvoicesRaw.filter(inv => {
+            const matchInvNo = (inv.invoiceNumber || '').toLowerCase().includes(calcSearchQuery);
+            const matchName = (inv.customerName || '').toLowerCase().includes(calcSearchQuery);
+            const matchPhone = (inv.customerPhone || '').toLowerCase().includes(calcSearchQuery);
+            return matchInvNo || matchName || matchPhone;
+        });
+    } else {
+        if (currentCalcFilter === 'initial') {
+            // نمایش تمام پیش‌فاکتورهای ثبت اولیه تا بتوان مستقیم از همین‌جا نهایی‌شان کرد
+            listToShow = allInvoicesRaw.filter(inv => inv.status === 'ثبت اولیه');
+        } else {
+            listToShow = filteredFinalInvoices.filter(inv => {
+                const isCalculated = inv.isProfitCalculated === true;
+                return currentCalcFilter === 'pending' ? !isCalculated : isCalculated;
+            });
+        }
+    }
+
+    // 🔥 مرتب‌سازی دقیق بر اساس تاریخ نهایی شدن (جدیدترین در بالای لیست) 🔥
+    listToShow.sort((a, b) => getEffectiveMillis(b) - getEffectiveMillis(a));
 
     if (listToShow.length === 0) {
         calcList.innerHTML = `<p style="text-align:center; padding:20px; color:#7f8c8d;">هیچ فاکتوری در این بخش یافت نشد.</p>`;
@@ -618,11 +820,26 @@ function renderCalculator() {
     listToShow.forEach(inv => {
         const div = document.createElement('div');
         div.className = 'inv-card';
-        const dateStr = inv.timestamp ? new Date(inv.timestamp.toDate()).toLocaleDateString('en-GB') : '-';
+        
+        const createdDateStr = inv.timestamp && typeof inv.timestamp.toDate === 'function' ? new Date(inv.timestamp.toDate()).toLocaleDateString('en-GB') : '-';
+        const finalizedDateObj = (inv.status === 'نهایی' && inv.finalizedAt) ? getEffectiveDate(inv) : null;
+        const finalizedDateStr = finalizedDateObj ? finalizedDateObj.toLocaleDateString('en-GB') : null;
+
         const shippingCharged = parseFloat(inv.shippingCost) || 0;
         const discount = parseFloat(inv.discount) || 0;
         const sellerName = inv.salespersonName || 'نامشخص'; 
         
+        let statusOptions = '';
+        statusLabels.forEach(lbl => {
+            statusOptions += `<option value="${lbl}" ${inv.status === lbl ? 'selected' : ''}>${lbl}</option>`;
+        });
+
+        let sourceOptions = `<option value="">منبع آشنایی...</option>`;
+        finalSourcesList.forEach(src => {
+            sourceOptions += `<option value="${src}" ${inv.leadSource === src ? 'selected' : ''}>${src}</option>`;
+        });
+        sourceOptions += `<option value="add_new" style="background:#f1f2f6; font-weight:bold; color:#2980b9;">➕ منبع جدید...</option>`;
+
         let itemsHTML = '';
         (inv.items || []).forEach((item, idx) => {
             const cost = item.costPrice || 0;
@@ -635,15 +852,23 @@ function renderCalculator() {
         });
 
         div.innerHTML = `
-            <div class="inv-header">
-                <div>
+            <div class="inv-header" style="flex-wrap: wrap; gap: 10px;">
+                <div style="display:flex; align-items:center; flex-wrap:wrap; gap:8px;">
                     <span style="font-size:18px; font-weight:bold;">${inv.invoiceNumber}</span>
-                    <span style="margin-right:15px; font-size:12px; background:#f1c40f; color:#000; padding:3px 8px; border-radius:4px;">${inv.invoiceType === 'retail' ? 'تک فروشی' : 'عمده فروشی'}</span>
+                    <span style="font-size:12px; background:#f1c40f; color:#000; padding:3px 8px; border-radius:4px;">${inv.invoiceType === 'retail' ? 'تک فروشی' : 'عمده فروشی'}</span>
+                    <span style="font-size:11px; background:${inv.isProfitCalculated ? '#2ecc71' : '#e67e22'}; color:#fff; padding:3px 8px; border-radius:4px;">${inv.isProfitCalculated ? '✅ سود محاسبه شده' : '⏳ در انتظار محاسبه'}</span>
+                    <span style="font-size:12px; color:#ecf0f1;">📅 صدور: ${createdDateStr} ${finalizedDateStr ? `| 🎯 نهایی: <strong>${finalizedDateStr}</strong>` : ''}</span>
                 </div>
-                <div style="font-size:14px;">
-                    مشتری: ${inv.customerName} | 
-                    <span style="color: #a29bfe; font-weight: bold; margin: 0 5px;">👤 فروشنده: ${sellerName}</span> | 
-                    مبلغ کل فاکتور: <span style="color:#f1c40f; font-weight:bold;">${inv.grandTotal} ${inv.currency}</span>
+                <div style="display:flex; align-items:center; flex-wrap:wrap; gap:10px; font-size:14px;">
+                    <span>مشتری: <strong>${inv.customerName}</strong> (${inv.customerCountry || '-'})</span> | 
+                    <span style="color: #a29bfe; font-weight: bold;">👤 فروشنده: ${sellerName}</span> | 
+                    <span>مبلغ فاکتور: <strong style="color:#f1c40f;">${inv.grandTotal.toFixed(2)} ${inv.currency}</strong></span>
+                    <select class="calc-source-select" data-id="${inv.id}" data-col="${inv.collectionName}" style="padding:4px 8px; border-radius:4px; border:1px solid #e67e22; background:#fdf2e9; font-family:inherit; font-size:12px; cursor:pointer;">
+                        ${sourceOptions}
+                    </select>
+                    <select class="calc-status-select" data-id="${inv.id}" data-col="${inv.collectionName}" style="padding:4px 8px; border-radius:4px; border:none; background:${inv.status === 'نهایی' ? '#27ae60' : '#ecf0f1'}; color:${inv.status === 'نهایی' ? '#fff' : '#2c3e50'}; font-weight:bold; font-family:inherit; font-size:12px; cursor:pointer;">
+                        ${statusOptions}
+                    </select>
                 </div>
             </div>
             <div class="inv-body">
@@ -664,8 +889,8 @@ function renderCalculator() {
                         </div>
                         <div style="flex:1; background: #f8f9fa; padding: 15px; border-radius: 6px; text-align: right; font-size: 14px;">
                             <p style="margin-bottom:5px;">🛒 سود کالاها: <span id="items-profit-${inv.id}" style="font-weight:bold;">0.00</span> ${inv.currency}</p>
-                            <p style="margin-bottom:5px;">📦 سود/زیان ارسال: <span id="shipping-profit-${inv.id}" style="font-weight:bold;">0.00</span> ${inv.currency}</p>
-                            <p style="color:#e74c3c; margin-bottom:0;">📉 تخفیف فاکتور: ${discount} ${inv.currency}</p>
+                            <p style="margin-bottom:0;">📦 سود/زیان ارسال: <span id="shipping-profit-${inv.id}" style="font-weight:bold;">0.00</span> ${inv.currency}</p>
+                            ${discount > 0 ? `<p style="color:#e74c3c; margin-top:5px; margin-bottom:0;">📉 تخفیف فاکتور: ${discount}${inv.currency}</p>` : ''}
                         </div>
                     </div>
 
@@ -677,6 +902,59 @@ function renderCalculator() {
             </div>
         `;
         calcList.appendChild(div);
+
+        // رویداد تغییر منبع آشنایی مشتری مستقیماً در صفحه سود
+        const sourceSelect = div.querySelector('.calc-source-select');
+        sourceSelect.addEventListener('change', async (e) => {
+            let newValue = e.target.value;
+            if (newValue === 'add_new') {
+                const customSource = prompt("لطفاً نام منبع جدید را وارد کنید (مثلاً: فیسبوک):");
+                if (customSource && customSource.trim() !== '') {
+                    newValue = customSource.trim();
+                } else {
+                    e.target.value = inv.leadSource || '';
+                    return;
+                }
+            }
+            try {
+                e.target.disabled = true;
+                await updateDoc(doc(db, inv.collectionName, inv.id), { leadSource: newValue });
+                const invIndexRaw = allInvoicesRaw.findIndex(i => i.id === inv.id && i.collectionName === inv.collectionName);
+                if (invIndexRaw > -1) allInvoicesRaw[invIndexRaw].leadSource = newValue;
+                e.target.disabled = false;
+                applyDateFilter();
+            } catch (err) {
+                alert("خطا در ثبت منبع آشنایی");
+                e.target.disabled = false;
+            }
+        });
+
+        // رویداد تغییر وضعیت فاکتور (نهایی کردن مستقیم در صفحه سود)
+        const statusSelect = div.querySelector('.calc-status-select');
+        statusSelect.addEventListener('change', async (e) => {
+            const newStatus = e.target.value;
+            try {
+                e.target.disabled = true;
+                const updatePayload = { status: newStatus };
+                // ثبت تاریخ دقیق نهایی شدن فقط زمانی که فاکتور به حالت نهایی تغییر می‌کند
+                if (newStatus === 'نهایی' && inv.status !== 'نهایی') {
+                    updatePayload.finalizedAt = serverTimestamp();
+                }
+                await updateDoc(doc(db, inv.collectionName, inv.id), updatePayload);
+                const invIndexRaw = allInvoicesRaw.findIndex(i => i.id === inv.id && i.collectionName === inv.collectionName);
+                if (invIndexRaw > -1) {
+                    if (newStatus === 'نهایی' && allInvoicesRaw[invIndexRaw].status !== 'نهایی') {
+                        allInvoicesRaw[invIndexRaw].finalizedAt = new Date();
+                    }
+                    allInvoicesRaw[invIndexRaw].status = newStatus;
+                }
+                e.target.disabled = false;
+                applyDateFilter();
+            } catch (err) {
+                alert("خطا در تغییر وضعیت فاکتور");
+                e.target.disabled = false;
+            }
+        });
 
         const updateLiveCalc = () => {
             let totalSalesGoods = 0;
@@ -731,35 +1009,41 @@ function renderCalculator() {
             const actualShip = parseFloat(document.getElementById(`actual-ship-${inv.id}`).value) || 0;
             const netProfit = inv.grandTotal - (totalCostOfGoods + actualShip);
 
+            const updatePayload = {
+                items: updatedItems,
+                actualShippingCost: actualShip,
+                costOfGoods: totalCostOfGoods,
+                netProfit: netProfit,
+                isProfitCalculated: true
+            };
+
+            // اگر فاکتور هنوز ثبت اولیه بود، با ذخیره سود خودکار نهایی شود و تاریخ امروز را بگیرد
+            const wasNotFinal = inv.status !== 'نهایی';
+            if (wasNotFinal) {
+                updatePayload.status = 'نهایی';
+                updatePayload.finalizedAt = serverTimestamp();
+            }
+
             try {
-                await updateDoc(doc(db, inv.collectionName, inv.id), {
-                    items: updatedItems,
-                    actualShippingCost: actualShip,
-                    costOfGoods: totalCostOfGoods,
-                    netProfit: netProfit,
-                    isProfitCalculated: true
-                });
+                await updateDoc(doc(db, inv.collectionName, inv.id), updatePayload);
 
                 saveBtn.textContent = "✔️ ذخیره شد";
                 
-                const invIndexRaw = allInvoicesRaw.findIndex(i => i.id === inv.id);
+                const invIndexRaw = allInvoicesRaw.findIndex(i => i.id === inv.id && i.collectionName === inv.collectionName);
                 if (invIndexRaw > -1) {
                     allInvoicesRaw[invIndexRaw].items = updatedItems;
                     allInvoicesRaw[invIndexRaw].actualShippingCost = actualShip;
                     allInvoicesRaw[invIndexRaw].netProfit = netProfit;
                     allInvoicesRaw[invIndexRaw].isProfitCalculated = true;
+                    if (wasNotFinal) {
+                        allInvoicesRaw[invIndexRaw].status = 'نهایی';
+                        allInvoicesRaw[invIndexRaw].finalizedAt = new Date();
+                    }
                 }
                 
-                applyDateFilter(); 
-
                 setTimeout(() => {
-                    if (currentCalcFilter === 'pending') {
-                        div.style.display = 'none';
-                    } else {
-                        saveBtn.textContent = "💾 تایید و ذخیره سود";
-                        saveBtn.disabled = false;
-                    }
-                }, 1000);
+                    applyDateFilter();
+                }, 600);
 
             } catch (e) {
                 alert("خطا در ذخیره اطلاعات.");
