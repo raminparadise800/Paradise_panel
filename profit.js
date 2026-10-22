@@ -61,8 +61,21 @@ onAuthStateChanged(auth, (user) => {
     }
 });
 
-// ساخت خودکار کادر جستجو و دکمه پیش‌فاکتورها در بخش محاسبه سود
+// ساخت خودکار گزینه «ماه گذشته»، کادر جستجو و دکمه پیش‌فاکتورها
 function setupCalculatorToolbar() {
+    // افزودن خودکار گزینه «ماه گذشته» به منوی فیلتر تاریخ در صورت عدم وجود
+    if (dateRangeSelect && !dateRangeSelect.querySelector('option[value="lastMonth"]')) {
+        const lastMonthOpt = document.createElement('option');
+        lastMonthOpt.value = 'lastMonth';
+        lastMonthOpt.textContent = 'ماه گذشته';
+        const thisMonthOpt = dateRangeSelect.querySelector('option[value="thisMonth"]');
+        if (thisMonthOpt && thisMonthOpt.nextSibling) {
+            dateRangeSelect.insertBefore(lastMonthOpt, thisMonthOpt.nextSibling);
+        } else {
+            dateRangeSelect.appendChild(lastMonthOpt);
+        }
+    }
+
     const pendingBtn = document.getElementById('filter-pending');
     const completedBtn = document.getElementById('filter-completed');
     const calcList = document.getElementById('calculator-list');
@@ -198,12 +211,16 @@ function applyDateFilter() {
         startDate = new Date();
         startDate.setDate(now.getDate() - 30);
     } else if (range === 'thisMonth') {
-        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
+    } else if (range === 'lastMonth') {
+        // از روز اول ماه قبل ساعت 00:00 تا آخرین ثانیه روز آخر ماه قبل
+        startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0);
+        endDate = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
     } else if (range === 'custom') {
         if (dateFrom.value) startDate = new Date(dateFrom.value);
         if (dateTo.value) {
             endDate = new Date(dateTo.value);
-            endDate.setHours(23, 59, 59);
+            endDate.setHours(23, 59, 59, 999);
         }
     }
 
@@ -237,9 +254,11 @@ function updateDashboard() {
     let sourceSalesWholesale = {};
     let sourceSalesTotal = {};
 
-    const addData = (obj, key, amount) => {
-        if(!obj[key]) obj[key] = { vol: 0, count: 0 };
+    // ذخیره همزمان فروش، سود خالص و تعداد خرید برای هر کشور و منبع بازاریابی
+    const addData = (obj, key, amount, profit) => {
+        if(!obj[key]) obj[key] = { vol: 0, prof: 0, count: 0 };
         obj[key].vol += amount;
+        obj[key].prof += profit;
         obj[key].count += 1;
     };
 
@@ -254,17 +273,17 @@ function updateDashboard() {
         if (inv.invoiceType === 'retail') {
             retVol += grandTotalEUR;
             retProf += netProfitEUR;
-            addData(countrySalesRetail, country, grandTotalEUR);
-            addData(sourceSalesRetail, source, grandTotalEUR);
+            addData(countrySalesRetail, country, grandTotalEUR, netProfitEUR);
+            addData(sourceSalesRetail, source, grandTotalEUR, netProfitEUR);
         } else {
             whoVol += grandTotalEUR;
             whoProf += netProfitEUR;
-            addData(countrySalesWholesale, country, grandTotalEUR);
-            addData(sourceSalesWholesale, source, grandTotalEUR);
+            addData(countrySalesWholesale, country, grandTotalEUR, netProfitEUR);
+            addData(sourceSalesWholesale, source, grandTotalEUR, netProfitEUR);
         }
         
-        addData(countrySalesTotal, country, grandTotalEUR);
-        addData(sourceSalesTotal, source, grandTotalEUR);
+        addData(countrySalesTotal, country, grandTotalEUR, netProfitEUR);
+        addData(sourceSalesTotal, source, grandTotalEUR, netProfitEUR);
     });
 
     document.getElementById('dash-retail-vol').textContent = `${retVol.toFixed(2)} €`;
@@ -327,19 +346,23 @@ function updateDashboard() {
             const contentDiv = container.querySelector(`.${filterName}-content`);
             let dataObj = {};
             let totalVol = 0;
+            let totalProf = 0;
             let color = '';
 
             if (filterValue === 'total') {
                 dataObj = dataTotal;
                 totalVol = retVol + whoVol;
+                totalProf = retProf + whoProf;
                 color = '#16a085';
             } else if (filterValue === 'retail') {
                 dataObj = dataRetail;
                 totalVol = retVol;
+                totalProf = retProf;
                 color = '#2980b9';
             } else if (filterValue === 'wholesale') {
                 dataObj = dataWholesale;
                 totalVol = whoVol;
+                totalProf = whoProf;
                 color = '#8e44ad';
             }
 
@@ -353,15 +376,20 @@ function updateDashboard() {
             let html = '';
             sorted.forEach(([itemName, itemData], idx) => {
                 const itemVol = itemData.vol;
+                const itemProf = itemData.prof || 0;
                 const itemCount = itemData.count;
                 const perc = totalVol > 0 ? ((itemVol / totalVol) * 100).toFixed(1) : 0;
+                const profPerc = totalProf > 0 ? ((itemProf / totalProf) * 100).toFixed(1) : 0;
                 
                 html += `<div>
-                    <div style="display:flex; justify-content:space-between; align-items: flex-end; font-size:14px; margin-bottom:6px;">
-                        <span>${idx + 1}. <strong>${itemName}</strong></span>
+                    <div style="display:flex; justify-content:space-between; align-items:center; font-size:14px; margin-bottom:6px;">
+                        <div>
+                            <span style="display:block; margin-bottom:4px;">${idx + 1}. <strong>${itemName}</strong></span>
+                            <span style="font-size:11px; color:#34495e; background:#f1f2f6; padding:2px 6px; border-radius:4px; font-weight:bold; border: 1px solid #e0e0e0; display:inline-block;">تعداد: ${itemCount} خرید</span>
+                        </div>
                         <div style="text-align:left;">
-                            <span style="color:${color}; font-weight:bold; display:block; margin-bottom:4px;">${perc}% <span style="font-size:11px; color:#7f8c8d; font-weight:normal;">(${itemVol.toFixed(2)} €)</span></span>
-                            <span style="font-size:11px; color:#34495e; background:#f1f2f6; padding:3px 6px; border-radius:4px; font-weight:bold; border: 1px solid #e0e0e0;">تعداد: ${itemCount} خرید</span>
+                            <span style="color:${color}; font-weight:bold; display:block; margin-bottom:3px; font-size:13px;">فروش: ${perc}% <span style="font-size:11px; color:#7f8c8d; font-weight:normal;">(${itemVol.toFixed(2)} €)</span></span>
+                            <span style="color:#27ae60; font-weight:bold; display:block; font-size:12px;">سود: ${profPerc}% <span style="font-size:11px; color:#7f8c8d; font-weight:normal;">(${itemProf.toFixed(2)} €)</span></span>
                         </div>
                     </div>
                     <div style="width:100%; background:#f1f2f6; height:8px; border-radius:4px; overflow:hidden;">
